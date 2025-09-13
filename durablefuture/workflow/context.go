@@ -16,6 +16,7 @@ package workflow
 
 import (
 	"context"
+	"durablefuture/internal/types"
 )
 
 // Context is the interface for Workflow Operations.
@@ -23,6 +24,7 @@ type Context interface {
 	context.Context
 
 	ExecuteActivity(activityFn any, args ...any) Future
+	ExecuteActivityWithOptions(activityFn any, options *types.ActivityOptions, args ...any) Future
 
 	GetID() string
 
@@ -37,4 +39,15 @@ type Context interface {
 // `args` are the arguments to pass to the activity. They must be JSON-serializable.
 func ExecuteActivity(ctx Context, activityFn any, args ...any) Future {
 	return ctx.ExecuteActivity(activityFn, args...)
+}
+
+// ExecuteActivityWithOptions schedules the execution of an activity function with custom options.
+// This allows configuring retry policies, timeouts, and other execution parameters.
+//
+// The `ctx` (workflow.Context) holds the replay state.
+// The `activityFn` must be a function registered with the worker.
+// The `options` specify custom execution parameters like retry policy and timeouts.
+// `args` are the arguments to pass to the activity. They must be JSON-serializable.
+func ExecuteActivityWithOptions(ctx Context, activityFn any, options *types.ActivityOptions, args ...any) Future {
+	return ctx.ExecuteActivityWithOptions(activityFn, options, args...)
 }

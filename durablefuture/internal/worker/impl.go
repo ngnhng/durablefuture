@@ -323,7 +323,9 @@ func (i *Impl) runActivityTaskProcessor(ctx context.Context) error {
 				resultEvent = types.WorkflowEvent{
 					EventType: types.ActivityFailedEvent,
 					Attributes: i.converter.MustTo(types.ActivityFailedAttributes{
-						Error: err.Error(),
+						Error:         err.Error(),
+						AttemptNumber: task.AttemptNumber,
+						FailedTime:    time.Now(),
 					}),
 				}
 			} else {

@@ -25,6 +25,7 @@ Traditional workflow engines often require complex deployments with proprietary 
 ## Usage
 
 - Workflow: See full version at [/examples/order.go](durablefuture/examples/order.go)
+- Retry Examples: See retry configurations at [/examples/retry_examples.go](durablefuture/examples/retry_examples.go)
 - Usage: See full version at [/usage/main.go](usage/main.go)
 
 ### 1. Write a workflow
@@ -111,6 +112,80 @@ func OrderWorkflow(ctx workflow.Context, customerId string, productId string, am
 	if err := workerClient.Run(ctx); err != nil {
 		return
 	}
+```
+
+## Configuration Features
+
+### Activity Retry Policies
+
+DurableFuture supports sophisticated retry policies for activities:
+
+```go
+// Exponential backoff retry policy
+retryPolicy := &types.RetryPolicy{
+    MaximumAttempts:    5,
+    InitialInterval:    1 * time.Second,
+    BackoffCoefficient: 2.0,
+    MaximumInterval:    30 * time.Second,
+    BackoffPolicy:      types.BackoffExponential,
+    NonRetryableErrorTypes: []string{"fatal error", "validation error"},
+}
+
+activityOptions := &types.ActivityOptions{
+    TaskQueue:              "default",
+    ScheduleToCloseTimeout: 5 * time.Minute,
+    StartToCloseTimeout:    30 * time.Second,
+    RetryPolicy:            retryPolicy,
+}
+
+// Execute activity with custom retry policy
+var result string
+err := workflow.ExecuteActivityWithOptions(ctx, MyActivity, activityOptions, input).
+    Get(ctx, &result)
+```
+
+### Backoff Strategies
+
+Three backoff strategies are supported:
+
+1. **Exponential Backoff** (`BackoffExponential`): Delay increases exponentially (1s, 2s, 4s, 8s...)
+2. **Linear Backoff** (`BackoffLinear`): Delay increases linearly (1s, 2s, 3s, 4s...)
+3. **Fixed Backoff** (`BackoffFixed`): Constant delay between retries (1s, 1s, 1s, 1s...)
+
+### Timeout Configurations
+
+Activities support multiple timeout configurations:
+
+- **ScheduleToCloseTimeout**: Total time allowed for the activity
+- **StartToCloseTimeout**: Time allowed for execution once started
+- **ScheduleToStartTimeout**: Time allowed to wait for a worker
+- **HeartbeatTimeout**: Heartbeat interval for long-running activities
+
+### Namespace Support
+
+DurableFuture supports namespaces for multi-tenant isolation:
+
+```go
+workflowOptions := &types.WorkflowOptions{
+    TaskQueue: "default",
+    Namespace: "production",
+    WorkflowExecutionTimeout: 10 * time.Minute,
+}
+```
+
+### Non-Retryable Errors
+
+Specify error types that should not trigger retries:
+
+```go
+retryPolicy := &types.RetryPolicy{
+    MaximumAttempts: 3,
+    NonRetryableErrorTypes: []string{
+        "fatal error",
+        "validation error", 
+        "authentication failed",
+    },
+}
 ```
 
 - Finally, the client code:

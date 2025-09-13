@@ -16,6 +16,7 @@ package types
 
 import (
 	"encoding/json"
+	"time"
 )
 
 type (
@@ -35,6 +36,8 @@ const (
 	ActivityStarted
 	ActivityCompletedEvent
 	ActivityFailedEvent
+	ActivityRetryScheduledEvent
+	ActivityTimedOutEvent
 	WorkflowFailed
 	WorkflowCompleted
 )
@@ -54,9 +57,12 @@ type (
 	}
 
 	ActivityTaskScheduledAttributes struct {
-		WorkflowFnName string `json:"wf_name"`
-		ActivityFnName string `json:"name"`
-		Input          []any  `json:"input"`
+		WorkflowFnName   string          `json:"wf_name"`
+		ActivityFnName   string          `json:"name"`
+		Input            []any           `json:"input"`
+		ActivityOptions  *ActivityOptions `json:"activity_options,omitempty"`
+		AttemptNumber    int             `json:"attempt_number"`
+		ScheduledTime    time.Time       `json:"scheduled_time"`
 	}
 
 	ActivityCompletedAttributes struct {
@@ -66,6 +72,23 @@ type (
 	}
 
 	ActivityFailedAttributes struct {
-		Error string `json:"error"`
+		Error         string `json:"error"`
+		AttemptNumber int    `json:"attempt_number"`
+		FailedTime    time.Time `json:"failed_time"`
+	}
+
+	ActivityRetryScheduledAttributes struct {
+		ActivityFnName string          `json:"name"`
+		AttemptNumber  int             `json:"attempt_number"`
+		RetryDelay     time.Duration   `json:"retry_delay"`
+		ScheduledTime  time.Time       `json:"scheduled_time"`
+		Error          string          `json:"error"`
+	}
+
+	ActivityTimedOutAttributes struct {
+		ActivityFnName string        `json:"name"`
+		AttemptNumber  int           `json:"attempt_number"`
+		TimeoutType    string        `json:"timeout_type"` // "ScheduleToStart", "StartToClose", "Heartbeat"
+		TimedOutTime   time.Time     `json:"timed_out_time"`
 	}
 )
