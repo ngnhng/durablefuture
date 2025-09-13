@@ -154,7 +154,7 @@ func (wfCtx *contextImpl) ExecuteActivityWithOptions(activityFn any, options *ty
 						options = types.DefaultActivityOptions()
 					}
 					
-					if options.RetryPolicy != nil && options.RetryPolicy.ShouldRetry(attrs.AttemptNumber, fmt.Errorf(attrs.Error)) {
+					if options.RetryPolicy != nil && options.RetryPolicy.ShouldRetry(attrs.AttemptNumber, fmt.Errorf("%s", attrs.Error)) {
 						// This failure should trigger a retry - look for a retry scheduled event
 						retryFound := false
 						for j := len(wfCtx.history) - 1; j >= 0; j-- {

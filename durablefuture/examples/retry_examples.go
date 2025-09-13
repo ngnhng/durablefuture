@@ -156,13 +156,13 @@ func ActivityWithNonRetryableError(ctx context.Context, input string) (any, erro
 	
 	if errorType == "fatal error" || errorType == "validation error" {
 		log.Printf("ActivityWithNonRetryableError failing with non-retryable error: %s", errorType)
-		return nil, fmt.Errorf(errorType)
+		return nil, fmt.Errorf("%s", errorType)
 	}
 
 	// 50% chance of success for retryable scenarios
 	if rand.Float64() < 0.5 {
 		log.Printf("ActivityWithNonRetryableError failing with retryable error: %s", errorType)
-		return nil, fmt.Errorf(errorType)
+		return nil, fmt.Errorf("%s", errorType)
 	}
 
 	result := fmt.Sprintf("Success! Input: %s", input)
