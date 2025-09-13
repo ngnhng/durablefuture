@@ -121,11 +121,17 @@ func newContext(
 }
 
 func (wfCtx *contextImpl) ExecuteActivity(activityFn any, args ...any) workflow.Future {
+	return wfCtx.ExecuteActivityWithOptions(activityFn, nil, args...)
+}
+
+func (wfCtx *contextImpl) ExecuteActivityWithOptions(activityFn any, options *types.ActivityOptions, args ...any) workflow.Future {
 	wfCtx.sequence++
 	decisionOutcomesFound := 0
+	attemptNumber := 1
 	log.Printf("ExecuteActivity: wfCtx seq: %v", wfCtx.sequence)
 	log.Printf("ExecuteActivity: wfCtx hist: %v", utils.DebugWorkflowEvents(wfCtx.history))
 
+	// Count the decision outcomes and track retry attempts for this activity
 	for _, event := range wfCtx.history {
 		if event.EventType == types.ActivityCompletedEvent || event.EventType == types.ActivityFailedEvent {
 			decisionOutcomesFound++
@@ -142,6 +148,50 @@ func (wfCtx *contextImpl) ExecuteActivity(activityFn any, args ...any) workflow.
 
 					var attrs types.ActivityFailedAttributes
 					_ = json.Unmarshal(event.Attributes, &attrs)
+					
+					// Check if we should retry this activity
+					if options == nil {
+						options = types.DefaultActivityOptions()
+					}
+					
+					if options.RetryPolicy != nil && options.RetryPolicy.ShouldRetry(attrs.AttemptNumber, fmt.Errorf(attrs.Error)) {
+						// This failure should trigger a retry - look for a retry scheduled event
+						retryFound := false
+						for j := len(wfCtx.history) - 1; j >= 0; j-- {
+							if wfCtx.history[j].EventType == types.ActivityRetryScheduledEvent {
+								var retryAttrs types.ActivityRetryScheduledAttributes
+								_ = json.Unmarshal(wfCtx.history[j].Attributes, &retryAttrs)
+								if retryAttrs.AttemptNumber == attrs.AttemptNumber + 1 {
+									retryFound = true
+									attemptNumber = retryAttrs.AttemptNumber
+									break
+								}
+							}
+						}
+						
+						if !retryFound {
+							// Schedule a retry
+							retryDelay := options.RetryPolicy.CalculateRetryDelay(attrs.AttemptNumber)
+							retryEvent := types.WorkflowEvent{
+								EventType:  types.ActivityRetryScheduledEvent,
+								WorkflowID: wfCtx.GetID(),
+								Attributes: wfCtx.converter.MustTo(types.ActivityRetryScheduledAttributes{
+									ActivityFnName: "",  // Will be set below
+									AttemptNumber:  attrs.AttemptNumber + 1,
+									RetryDelay:     retryDelay,
+									ScheduledTime:  time.Now().Add(retryDelay),
+									Error:          attrs.Error,
+								}),
+							}
+							wfCtx.newEvents = append(wfCtx.newEvents, retryEvent)
+							attemptNumber = attrs.AttemptNumber + 1
+						}
+						
+						// Return an unresolved future to trigger re-execution
+						return &futureImpl{isResolved: false}
+					}
+					
+					// No retry - return the error
 					return &futureImpl{isResolved: true, err: fmt.Errorf("%s", attrs.Error)}
 				}
 			}
@@ -157,19 +207,27 @@ func (wfCtx *contextImpl) ExecuteActivity(activityFn any, args ...any) workflow.
 		panic(err)
 	}
 
-	log.Printf("[context] will try to execute activity: %v", fnName)
+	log.Printf("[context] will try to execute activity: %v, attempt: %v", fnName, attemptNumber)
+
+	// Use default options if none provided
+	if options == nil {
+		options = types.DefaultActivityOptions()
+	}
 
 	attributes, err := json.Marshal(types.ActivityTaskScheduledAttributes{
-		WorkflowFnName: wfCtx.GetWorkflowFunctionName(),
-		ActivityFnName: fnName,
-		Input:          args,
+		WorkflowFnName:  wfCtx.GetWorkflowFunctionName(),
+		ActivityFnName:  fnName,
+		Input:           args,
+		ActivityOptions: options,
+		AttemptNumber:   attemptNumber,
+		ScheduledTime:   time.Now(),
 	})
 	if err != nil {
 		log.Printf("error: %v", err)
 		panic("marshal error")
 	}
 
-	log.Printf("new activity task scheduled event for: %v with ID: %v", fnName, wfCtx.GetID())
+	log.Printf("new activity task scheduled event for: %v with ID: %v, attempt: %v", fnName, wfCtx.GetID(), attemptNumber)
 	newEvent := types.WorkflowEvent{
 		EventType:  types.ActivityTaskScheduledEvent,
 		WorkflowID: wfCtx.GetID(),

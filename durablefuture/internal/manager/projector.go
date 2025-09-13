@@ -118,6 +118,11 @@ func (m *Manager) runWorkflowTaskProjector(ctx context.Context) error {
 			// or the WorkflowTask message might not need it if the worker can look it up.
 			// Let's assume for now the worker can look it up by workflowID if needed.
 			workflowFnName = ""
+			
+		case types.ActivityRetryScheduledEvent:
+			slog.Info(fmt.Sprintf("workflow projector got ActivityRetryScheduledEvent: %v", event))
+			// Don't create a task immediately - retries are handled by the workflow context
+			shouldCreateTask = false
 		}
 
 		if shouldCreateTask {
@@ -209,10 +214,13 @@ func (m *Manager) runActivityTaskProjector(ctx context.Context) error {
 			slog.Info(fmt.Sprintf("projector/act: prepping workflowID: %s", workflowID))
 
 			task := types.ActivityTask{
-				WorkflowFn: attrs.WorkflowFnName,
-				WorkflowID: workflowID,
-				ActivityFn: attrs.ActivityFnName,
-				Input:      attrs.Input,
+				WorkflowFn:      attrs.WorkflowFnName,
+				WorkflowID:      workflowID,
+				ActivityFn:      attrs.ActivityFnName,
+				Input:           attrs.Input,
+				AttemptNumber:   attrs.AttemptNumber,
+				ActivityOptions: attrs.ActivityOptions,
+				ScheduledTime:   attrs.ScheduledTime,
 			}
 			slog.Info(fmt.Sprintf("projector/act: prepping payload: %v", task))
 
