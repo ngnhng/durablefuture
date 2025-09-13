@@ -142,7 +142,7 @@ func (wfCtx *contextImpl) ExecuteActivity(activityFn any, args ...any) workflow.
 
 					var attrs types.ActivityFailedAttributes
 					_ = json.Unmarshal(event.Attributes, &attrs)
-					return &futureImpl{isResolved: true, err: fmt.Errorf(attrs.Error)}
+					return &futureImpl{isResolved: true, err: fmt.Errorf("%s", attrs.Error)}
 				}
 			}
 		}

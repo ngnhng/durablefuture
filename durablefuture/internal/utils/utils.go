@@ -89,7 +89,7 @@ func DebugWorkflowEvents(events []types.WorkflowEvent) string {
 
 	result := fmt.Sprintf("[]types.WorkflowEvent{%d items}:\n", len(events))
 	for i, e := range events {
-		result += fmt.Sprintf("  [%d]: EventID=%d, EventType=%s, WorkflowID=%s, Attributes=%s\n",
+		result += fmt.Sprintf("  [%d]: EventID=%d, EventType=%d, WorkflowID=%s, Attributes=%s\n",
 			i, e.EventID, e.EventType, e.WorkflowID, string(e.Attributes))
 	}
 	return result

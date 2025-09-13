@@ -77,7 +77,7 @@ func (sc *ServerCommand) run(ctx context.Context, host, port string) error {
 
 	mgr, err := manager.NewManager(ctx, fmt.Sprintf("nats://%s:%s", host, port))
 	if err != nil {
-		slog.Error("Error creating manager: %v", err)
+		slog.Error("Error creating manager", "error", err)
 	}
 
 	sigCh := make(chan os.Signal, 1)
