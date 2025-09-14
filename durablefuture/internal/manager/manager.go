@@ -20,6 +20,7 @@ import (
 	"log"
 	"log/slog"
 
+	"durablefuture/internal/constants"
 	"durablefuture/internal/converter"
 	natz "durablefuture/internal/natz"
 
@@ -104,8 +105,8 @@ func (m *Manager) ensureStreams(ctx context.Context) error {
 	var err error
 	// Workflow History Stream
 	_, err = m.conn.EnsureStream(ctx, jetstream.StreamConfig{
-		Name:      "HISTORY",
-		Subjects:  []string{"history.>"},
+		Name:      constants.HistoryStream,
+		Subjects:  []string{constants.HistorySubjectPattern},
 		Retention: jetstream.LimitsPolicy,
 		Storage:   jetstream.FileStorage,
 	})
@@ -116,8 +117,8 @@ func (m *Manager) ensureStreams(ctx context.Context) error {
 
 	// Workflow Tasks Stream
 	_, err = m.conn.EnsureStream(ctx, jetstream.StreamConfig{
-		Name:      "WORKFLOW_TASKS",
-		Subjects:  []string{"workflow.*.tasks"},
+		Name:      constants.WorkflowTasksStream,
+		Subjects:  []string{constants.WorkflowTasksSubjectPattern},
 		Retention: jetstream.WorkQueuePolicy,
 		Storage:   jetstream.FileStorage,
 	})
@@ -129,8 +130,8 @@ func (m *Manager) ensureStreams(ctx context.Context) error {
 
 	// Activity Tasks Stream, read-only so no listen subject
 	_, err = m.conn.EnsureStream(ctx, jetstream.StreamConfig{
-		Name:      "ACTIVITY_TASKS",
-		Subjects:  []string{"activity.*.tasks"},
+		Name:      constants.ActivityTasksStream,
+		Subjects:  []string{constants.ActivityTasksSubjectPattern},
 		Retention: jetstream.WorkQueuePolicy,
 		Storage:   jetstream.FileStorage,
 	})
@@ -145,7 +146,7 @@ func (m *Manager) ensureStreams(ctx context.Context) error {
 func (m *Manager) ensureKV(ctx context.Context) error {
 	var err error
 	_, err = m.conn.EnsureKV(ctx, jetstream.KeyValueConfig{
-		Bucket: "workflow-result",
+		Bucket: constants.WorkflowResultBucket,
 	})
 
 	if err != nil {
@@ -153,7 +154,7 @@ func (m *Manager) ensureKV(ctx context.Context) error {
 	}
 
 	_, err = m.conn.EnsureKV(ctx, jetstream.KeyValueConfig{
-		Bucket: "workflow-input",
+		Bucket: constants.WorkflowInputBucket,
 	})
 
 	if err != nil {
@@ -165,8 +166,8 @@ func (m *Manager) ensureKV(ctx context.Context) error {
 
 func (m *Manager) runCommandRequestHandler(ctx context.Context) error {
 	sub, err := m.conn.QueueSubscribe(
-		"command.request.>",
-		"manager-command-processors",
+		constants.CommandRequestSubjectPattern,
+		constants.ManagerCommandProcessorsConsumer,
 		m.handler.HandleRequest,
 	)
 	if err != nil {

@@ -20,7 +20,9 @@ import (
 	"fmt"
 	"log"
 
+	"durablefuture/internal/constants"
 	"durablefuture/internal/converter"
+	dferrors "durablefuture/internal/errors"
 	"durablefuture/internal/natz"
 
 	"github.com/gofrs/uuid/v5"
@@ -50,7 +52,7 @@ func NewExecution(c *natz.Conn, conv converter.Converter, workflowID uuid.UUID) 
 
 func (w *Execution) Get(ctx context.Context, valuePtr any) error {
 
-	watcher, err := w.Conn.WatchKV(ctx, "workflow-result", w.WorkflowID)
+	watcher, err := w.Conn.WatchKV(ctx, constants.WorkflowResultBucket, w.WorkflowID)
 	if err != nil {
 		log.Printf("error waiting for workflow result: %v", err)
 	}
@@ -77,9 +79,9 @@ func (w *Execution) Get(ctx context.Context, valuePtr any) error {
 			// Extract the error part (second element)
 			if resultArray[1] != nil {
 				if errStr, ok := resultArray[1].(string); ok && errStr != "" {
-					return fmt.Errorf("%s", errStr) // TODO: errors.Is friendly
+					return dferrors.NewWorkflowExecutionError(w.WorkflowID, errStr, nil)
 				}
-				return fmt.Errorf("sdk error: %v", resultArray[1])
+				return dferrors.NewWorkflowExecutionError(w.WorkflowID, "unknown error", fmt.Errorf("sdk error: %v", resultArray[1]))
 			}
 
 			if valuePtr != nil && resultArray[0] != nil {

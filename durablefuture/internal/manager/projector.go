@@ -21,6 +21,7 @@ import (
 	"log/slog"
 	"strings"
 
+	"durablefuture/internal/constants"
 	"durablefuture/internal/utils"
 
 	"durablefuture/internal/types"
@@ -34,11 +35,11 @@ func (m *Manager) runWorkflowTaskProjector(ctx context.Context) error {
 	js, _ := m.conn.JS()
 
 	// This consumer follows the HISTORY stream. It needs a durable name so it can resume.
-	consumer, err := m.conn.EnsureConsumer(ctx, "HISTORY", jetstream.ConsumerConfig{
-		Durable:       "projector-workflow-tasks",
+	consumer, err := m.conn.EnsureConsumer(ctx, constants.HistoryStream, jetstream.ConsumerConfig{
+		Durable:       constants.WorkflowTaskProjectorConsumer,
 		DeliverPolicy: jetstream.DeliverAllPolicy, // Process all history on startup
 		AckPolicy:     jetstream.AckExplicitPolicy,
-		FilterSubject: "history.>",
+		FilterSubject: constants.HistorySubjectPattern,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create workflow task projector consumer: %w", err)
@@ -89,7 +90,7 @@ func (m *Manager) runWorkflowTaskProjector(ctx context.Context) error {
 			workflowFnName = attrs.WorkflowFnName
 
 			// Get input args from KV store using workflow function name
-			kv, err := js.KeyValue(ctx, "workflow-input")
+			kv, err := js.KeyValue(ctx, constants.WorkflowInputBucket)
 			if err != nil {
 				slog.Info(fmt.Sprintf("PROJECTOR/WF: failed to get KV store, terminating msg: %v", err))
 				msg.Term()
@@ -131,7 +132,7 @@ func (m *Manager) runWorkflowTaskProjector(ctx context.Context) error {
 			taskData, _ := json.Marshal(task)
 
 			// Use the event sequence as a message ID for deduplication.
-			taskSubject := fmt.Sprintf("workflow.%s.tasks", workflowID)
+			taskSubject := fmt.Sprintf("%s.%s.tasks", constants.WorkflowTasksSubjectPrefix, workflowID)
 			_, err := js.PublishMsg(
 				ctx,
 				&nats.Msg{
@@ -165,11 +166,11 @@ func (m *Manager) runWorkflowTaskProjector(ctx context.Context) error {
 func (m *Manager) runActivityTaskProjector(ctx context.Context) error {
 	js, _ := m.conn.JS()
 
-	consumer, err := m.conn.EnsureConsumer(ctx, "HISTORY", jetstream.ConsumerConfig{
-		Durable:       "projector-activity-tasks",
+	consumer, err := m.conn.EnsureConsumer(ctx, constants.HistoryStream, jetstream.ConsumerConfig{
+		Durable:       constants.ActivityTaskProjectorConsumer,
 		DeliverPolicy: jetstream.DeliverAllPolicy,
 		AckPolicy:     jetstream.AckExplicitPolicy,
-		FilterSubject: "history.>",
+		FilterSubject: constants.HistorySubjectPattern,
 	})
 	if err != nil {
 		slog.Info(fmt.Sprintf("error: %v", err))
@@ -258,11 +259,11 @@ func (m *Manager) runActivityTaskProjector(ctx context.Context) error {
 }
 
 func (m *Manager) runWorkflowResultProjector(ctx context.Context) error {
-	consumer, err := m.conn.EnsureConsumer(ctx, "HISTORY", jetstream.ConsumerConfig{
-		Durable:       "projector-workflow-result",
+	consumer, err := m.conn.EnsureConsumer(ctx, constants.HistoryStream, jetstream.ConsumerConfig{
+		Durable:       constants.WorkflowResultProjectorConsumer,
 		DeliverPolicy: jetstream.DeliverAllPolicy,
 		AckPolicy:     jetstream.AckExplicitPolicy,
-		FilterSubject: "history.>",
+		FilterSubject: constants.HistorySubjectPattern,
 	})
 	if err != nil {
 		return err
@@ -289,7 +290,7 @@ func (m *Manager) runWorkflowResultProjector(ctx context.Context) error {
 			workflowID := event.WorkflowID
 			result, _ := json.Marshal(attrs.Result)
 			slog.Info(fmt.Sprintf("WF_RESULT_PROJECTOR: updating KV: %v - %v", workflowID, string(result)))
-			m.conn.Set(ctx, "workflow-result", workflowID, result)
+			m.conn.Set(ctx, constants.WorkflowResultBucket, workflowID, result)
 
 		}
 		msg.Ack()
