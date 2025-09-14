@@ -41,6 +41,8 @@ services:
     environment:
       - NATS_URL=nats://nats:4222
     command: ["/server", "serve", "--host=nats"]
+    ports:
+      - "8080:8080" # Web interface port
 
   activity-worker:
     build:

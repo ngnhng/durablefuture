@@ -198,8 +198,11 @@ func (s *WorkflowServer) ExecuteWorkflow(
 
 // monitorWorkflow monitors workflow completion in the background
 func (s *WorkflowServer) monitorWorkflow(ctx context.Context, workflowID string, future workflow.Future) {
+	// Create a separate context for monitoring to avoid cancellation issues
+	monitorCtx := context.Background()
+	
 	var result any
-	err := future.Get(ctx, &result)
+	err := future.Get(monitorCtx, &result)
 
 	// Update workflow status and add completion event
 	if workflow, exists := s.workflows[workflowID]; exists {
