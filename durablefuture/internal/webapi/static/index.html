@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DurableFuture Workflow Visualizer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(90deg, #4f46e5, #7c3aed);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .main-content {
+            padding: 30px;
+        }
+
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            background: #f9fafb;
+        }
+
+        .section h2 {
+            color: #374151;
+            margin-bottom: 15px;
+            font-size: 1.5rem;
+            border-bottom: 2px solid #e5e7eb;
+            padding-bottom: 10px;
+        }
+
+        .workflow-form {
+            display: grid;
+            gap: 15px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .form-group label {
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 5px;
+        }
+
+        .form-group input, .form-group select, .form-group textarea {
+            padding: 12px;
+            border: 2px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 1rem;
+            transition: border-color 0.2s;
+        }
+
+        .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+            outline: none;
+            border-color: #4f46e5;
+        }
+
+        .btn {
+            background: linear-gradient(90deg, #4f46e5, #7c3aed);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
+        }
+
+        .workflow-list {
+            display: grid;
+            gap: 15px;
+        }
+
+        .workflow-item {
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 20px;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .workflow-item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        .workflow-header {
+            display: flex;
+            justify-content: between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .workflow-id {
+            font-family: 'Monaco', monospace;
+            font-size: 0.9rem;
+            color: #6b7280;
+            background: #f3f4f6;
+            padding: 4px 8px;
+            border-radius: 4px;
+        }
+
+        .status {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .status.running {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .status.completed {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .status.failed {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .workflow-details {
+            margin-top: 15px;
+            font-size: 0.9rem;
+            color: #6b7280;
+        }
+
+        .history-section {
+            margin-top: 20px;
+        }
+
+        .history-events {
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid #e5e7eb;
+            border-radius: 6px;
+            background: white;
+        }
+
+        .event-item {
+            padding: 12px;
+            border-bottom: 1px solid #f3f4f6;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .event-item:last-child {
+            border-bottom: none;
+        }
+
+        .event-type {
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .event-type.started {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+
+        .event-type.completed {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .event-type.failed {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #6b7280;
+        }
+
+        .error {
+            background: #fee2e2;
+            color: #991b1b;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid #f3f4f6;
+            border-top: 2px solid #4f46e5;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔄 DurableFuture</h1>
+            <p>Workflow Visualization & Management</p>
+        </div>
+        
+        <div class="main-content">
+            <!-- Execute Workflow Section -->
+            <div class="section">
+                <h2>Execute Workflow</h2>
+                <form class="workflow-form" id="workflowForm">
+                    <div class="form-group">
+                        <label for="workflowName">Workflow Name</label>
+                        <select id="workflowName" required>
+                            <option value="">Select a workflow...</option>
+                            <option value="OrderWorkflow">Order Processing Workflow</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group" id="orderInputs" style="display: none;">
+                        <label>Order Parameters</label>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                            <input type="text" id="customerId" placeholder="Customer ID (e.g., customer_123)">
+                            <input type="text" id="productId" placeholder="Product ID (e.g., widget-1000)">
+                            <input type="number" id="amount" placeholder="Amount (e.g., 999.99)" step="0.01">
+                            <input type="number" id="quantity" placeholder="Quantity (e.g., 2)">
+                        </div>
+                    </div>
+                    
+                    <button type="submit" class="btn">
+                        <span class="spinner" id="executeSpinner" style="display: none;"></span>
+                        Execute Workflow
+                    </button>
+                </form>
+                
+                <div id="executeResult"></div>
+            </div>
+
+            <!-- Workflows List Section -->
+            <div class="section">
+                <h2>Active Workflows</h2>
+                <button class="btn" onclick="loadWorkflows()" style="margin-bottom: 20px;">
+                    <span class="spinner" id="refreshSpinner" style="display: none;"></span>
+                    Refresh
+                </button>
+                <div id="workflowsList">
+                    <div class="loading">Loading workflows...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '';
+
+        // Show/hide order inputs based on workflow selection
+        document.getElementById('workflowName').addEventListener('change', function() {
+            const orderInputs = document.getElementById('orderInputs');
+            if (this.value === 'OrderWorkflow') {
+                orderInputs.style.display = 'block';
+            } else {
+                orderInputs.style.display = 'none';
+            }
+        });
+
+        // Execute workflow form handler
+        document.getElementById('workflowForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const workflowName = document.getElementById('workflowName').value;
+            const spinner = document.getElementById('executeSpinner');
+            const resultDiv = document.getElementById('executeResult');
+            
+            if (!workflowName) {
+                showError(resultDiv, 'Please select a workflow');
+                return;
+            }
+            
+            spinner.style.display = 'inline-block';
+            resultDiv.innerHTML = '';
+            
+            try {
+                let inputJson = '{}';
+                
+                if (workflowName === 'OrderWorkflow') {
+                    const customerId = document.getElementById('customerId').value;
+                    const productId = document.getElementById('productId').value;
+                    const amount = parseFloat(document.getElementById('amount').value);
+                    const quantity = parseInt(document.getElementById('quantity').value);
+                    
+                    if (!customerId || !productId || !amount || !quantity) {
+                        throw new Error('Please fill in all order parameters');
+                    }
+                    
+                    inputJson = JSON.stringify({
+                        customer_id: customerId,
+                        product_id: productId,
+                        amount: amount,
+                        quantity: quantity
+                    });
+                }
+                
+                const response = await fetch(`${API_BASE}/api.workflow.v1.WorkflowService/ExecuteWorkflow`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Connect-Protocol-Version': '1'
+                    },
+                    body: JSON.stringify({
+                        workflow_name: workflowName,
+                        input_json: inputJson
+                    })
+                });
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`HTTP ${response.status}: ${errorText}`);
+                }
+                
+                const result = await response.json();
+                showSuccess(resultDiv, `Workflow started successfully! ID: ${result.workflow_id}`);
+                
+                // Clear form and refresh workflows
+                document.getElementById('workflowForm').reset();
+                document.getElementById('orderInputs').style.display = 'none';
+                setTimeout(loadWorkflows, 1000);
+                
+            } catch (error) {
+                showError(resultDiv, `Error: ${error.message}`);
+            } finally {
+                spinner.style.display = 'none';
+            }
+        });
+
+        // Load workflows list
+        async function loadWorkflows() {
+            const spinner = document.getElementById('refreshSpinner');
+            const workflowsList = document.getElementById('workflowsList');
+            
+            spinner.style.display = 'inline-block';
+            
+            try {
+                const response = await fetch(`${API_BASE}/api.workflow.v1.WorkflowService/GetWorkflows`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Connect-Protocol-Version': '1'
+                    },
+                    body: JSON.stringify({
+                        page_size: 50
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
+                const result = await response.json();
+                renderWorkflows(workflowsList, result.workflows || []);
+                
+            } catch (error) {
+                showError(workflowsList, `Error loading workflows: ${error.message}`);
+            } finally {
+                spinner.style.display = 'none';
+            }
+        }
+
+        // Render workflows list
+        function renderWorkflows(container, workflows) {
+            if (workflows.length === 0) {
+                container.innerHTML = '<div class="loading">No workflows found. Execute a workflow to get started!</div>';
+                return;
+            }
+            
+            container.innerHTML = workflows.map(workflow => `
+                <div class="workflow-item">
+                    <div class="workflow-header">
+                        <div>
+                            <strong>${workflow.workflow_name}</strong>
+                            <div class="workflow-id">${workflow.workflow_id}</div>
+                        </div>
+                        <span class="status ${workflow.status.toLowerCase().replace('workflow_status_', '')}">${workflow.status.replace('WORKFLOW_STATUS_', '')}</span>
+                    </div>
+                    <div class="workflow-details">
+                        <div><strong>Started:</strong> ${formatTimestamp(workflow.start_time)}</div>
+                        ${workflow.end_time ? `<div><strong>Ended:</strong> ${formatTimestamp(workflow.end_time)}</div>` : ''}
+                        ${workflow.input ? `<div><strong>Input:</strong> ${workflow.input}</div>` : ''}
+                        ${workflow.output ? `<div><strong>Output:</strong> ${workflow.output}</div>` : ''}
+                    </div>
+                    <button class="btn" onclick="loadWorkflowHistory('${workflow.workflow_id}')" style="margin-top: 10px; padding: 6px 12px; font-size: 0.9rem;">
+                        View History
+                    </button>
+                    <div id="history-${workflow.workflow_id}" class="history-section" style="display: none;"></div>
+                </div>
+            `).join('');
+        }
+
+        // Load workflow history
+        async function loadWorkflowHistory(workflowId) {
+            const historyDiv = document.getElementById(`history-${workflowId}`);
+            
+            if (historyDiv.style.display === 'block') {
+                historyDiv.style.display = 'none';
+                return;
+            }
+            
+            historyDiv.innerHTML = '<div class="loading"><span class="spinner"></span>Loading history...</div>';
+            historyDiv.style.display = 'block';
+            
+            try {
+                const response = await fetch(`${API_BASE}/api.workflow.v1.WorkflowService/GetWorkflowHistory`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Connect-Protocol-Version': '1'
+                    },
+                    body: JSON.stringify({
+                        workflow_id: workflowId
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
+                const result = await response.json();
+                renderWorkflowHistory(historyDiv, result.events || []);
+                
+            } catch (error) {
+                showError(historyDiv, `Error loading history: ${error.message}`);
+            }
+        }
+
+        // Render workflow history
+        function renderWorkflowHistory(container, events) {
+            if (events.length === 0) {
+                container.innerHTML = '<div class="loading">No events found.</div>';
+                return;
+            }
+            
+            container.innerHTML = `
+                <div class="history-events">
+                    ${events.map(event => `
+                        <div class="event-item">
+                            <span class="event-type ${getEventTypeClass(event.event_type)}">${event.event_type.replace('EVENT_TYPE_', '')}</span>
+                            <div style="flex: 1;">
+                                <div>${event.details}</div>
+                                <div style="font-size: 0.8rem; color: #9ca3af; margin-top: 4px;">${formatTimestamp(event.timestamp)}</div>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        // Helper functions
+        function formatTimestamp(timestamp) {
+            if (!timestamp) return 'N/A';
+            return new Date(timestamp).toLocaleString();
+        }
+
+        function getEventTypeClass(eventType) {
+            if (eventType.includes('STARTED')) return 'started';
+            if (eventType.includes('COMPLETED')) return 'completed';
+            if (eventType.includes('FAILED')) return 'failed';
+            return 'started';
+        }
+
+        function showError(container, message) {
+            container.innerHTML = `<div class="error">${message}</div>`;
+        }
+
+        function showSuccess(container, message) {
+            container.innerHTML = `<div style="background: #d1fae5; color: #065f46; padding: 15px; border-radius: 6px; margin: 15px 0;">${message}</div>`;
+        }
+
+        // Load workflows on page load
+        loadWorkflows();
+        
+        // Auto-refresh workflows every 5 seconds
+        setInterval(loadWorkflows, 5000);
+    </script>
+</body>
+</html>

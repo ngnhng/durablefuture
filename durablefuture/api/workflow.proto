@@ -1,0 +1,99 @@
+// Copyright 2025 Nguyen-Nhat Nguyen
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+package api.workflow.v1;
+
+option go_package = "durablefuture/api/workflow/v1;workflowv1";
+
+import "google/protobuf/timestamp.proto";
+
+// WorkflowService provides APIs for workflow visualization and management
+service WorkflowService {
+  // GetWorkflows returns a list of all workflows
+  rpc GetWorkflows(GetWorkflowsRequest) returns (GetWorkflowsResponse);
+  
+  // GetWorkflowHistory returns the execution history of a specific workflow
+  rpc GetWorkflowHistory(GetWorkflowHistoryRequest) returns (GetWorkflowHistoryResponse);
+  
+  // ExecuteWorkflow starts a new workflow execution
+  rpc ExecuteWorkflow(ExecuteWorkflowRequest) returns (ExecuteWorkflowResponse);
+}
+
+message GetWorkflowsRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+}
+
+message GetWorkflowsResponse {
+  repeated WorkflowExecution workflows = 1;
+  string next_page_token = 2;
+}
+
+message GetWorkflowHistoryRequest {
+  string workflow_id = 1;
+}
+
+message GetWorkflowHistoryResponse {
+  repeated WorkflowEvent events = 1;
+}
+
+message ExecuteWorkflowRequest {
+  string workflow_name = 1;
+  string input_json = 2;
+}
+
+message ExecuteWorkflowResponse {
+  string workflow_id = 1;
+  WorkflowStatus status = 2;
+}
+
+message WorkflowExecution {
+  string workflow_id = 1;
+  string workflow_name = 2;
+  WorkflowStatus status = 3;
+  google.protobuf.Timestamp start_time = 4;
+  google.protobuf.Timestamp end_time = 5;
+  string input = 6;
+  string output = 7;
+}
+
+message WorkflowEvent {
+  string event_id = 1;
+  string workflow_id = 2;
+  EventType event_type = 3;
+  google.protobuf.Timestamp timestamp = 4;
+  string details = 5;
+  string activity_name = 6;
+}
+
+enum WorkflowStatus {
+  WORKFLOW_STATUS_UNSPECIFIED = 0;
+  WORKFLOW_STATUS_RUNNING = 1;
+  WORKFLOW_STATUS_COMPLETED = 2;
+  WORKFLOW_STATUS_FAILED = 3;
+  WORKFLOW_STATUS_CANCELLED = 4;
+}
+
+enum EventType {
+  EVENT_TYPE_UNSPECIFIED = 0;
+  EVENT_TYPE_WORKFLOW_STARTED = 1;
+  EVENT_TYPE_WORKFLOW_COMPLETED = 2;
+  EVENT_TYPE_WORKFLOW_FAILED = 3;
+  EVENT_TYPE_ACTIVITY_SCHEDULED = 4;
+  EVENT_TYPE_ACTIVITY_STARTED = 5;
+  EVENT_TYPE_ACTIVITY_COMPLETED = 6;
+  EVENT_TYPE_ACTIVITY_FAILED = 7;
+}
