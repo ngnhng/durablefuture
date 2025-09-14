@@ -18,8 +18,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"time"
+
+	"durablefuture/internal/config"
 
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
@@ -68,18 +69,16 @@ type Config struct {
 
 // DefaultConfig returns a default configuration for NATS connection.
 func DefaultConfig() Config {
-	natsURL := os.Getenv("NATS_URL")
-	if natsURL == "" {
-		natsURL = nats.DefaultURL // Default to localhost if not set
-	}
-
+	appConfig := config.LoadConfig()
+	
 	return Config{
-		URL:           natsURL,
-		MaxReconnects: -1, // Reconnect forever
-		ReconnectWait: 2 * time.Second,
-		DrainTimeout:  30 * time.Second,
-		PingInterval:  2 * time.Minute,
-		MaxPingsOut:   2,
+		URL:           appConfig.NATS.URL,
+		MaxReconnects: appConfig.NATS.MaxReconnects,
+		ReconnectWait: appConfig.NATS.ReconnectWait,
+		DrainTimeout:  appConfig.NATS.DrainTimeout,
+		PingInterval:  appConfig.NATS.PingInterval,
+		MaxPingsOut:   appConfig.NATS.MaxPingsOut,
+		Name:          appConfig.NATS.Name,
 	}
 }
 

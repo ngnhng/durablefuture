@@ -23,6 +23,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"durablefuture/internal/config"
 	"durablefuture/internal/logger"
 	"durablefuture/internal/manager"
 	"durablefuture/internal/types"
@@ -42,11 +43,19 @@ func NewServerCommand(ctx context.Context) *ServerCommand {
 func (sc *ServerCommand) Execute(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
 
-	port := fs.String("port", "4222", "NATS server port")
-	host := fs.String("host", "localhost", "NATS server host")
+	// Load default configuration
+	appConfig := config.LoadConfig()
+	
+	port := fs.String("port", appConfig.Server.Port, "NATS server port")
+	host := fs.String("host", appConfig.Server.Host, "NATS server host")
 
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+
+	// Validate configuration
+	if err := appConfig.Validate(); err != nil {
+		return fmt.Errorf("configuration validation failed: %w", err)
 	}
 
 	return sc.run(ctx, *host, *port)

@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	"durablefuture/internal/constants"
 	"durablefuture/internal/converter"
 	natz "durablefuture/internal/natz"
 	"durablefuture/internal/types"
@@ -136,7 +137,7 @@ func (h *Handler) HandleRequest(msg *nats.Msg) {
 			}
 			slog.Debug(fmt.Sprintf("stored input args in KV for workflow function: %s", data.WorkflowFnName))
 
-			subject := fmt.Sprintf("%s.%s", types.HistorySubjectPrefix, idStr)
+			subject := fmt.Sprintf("%s.%s", constants.HistorySubjectPrefix, idStr)
 			_, err = js.Publish(context.Background(), subject, h.conv.MustTo(event))
 			if err != nil {
 				slog.Debug(fmt.Sprintf("error: %v", err))

@@ -19,8 +19,9 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"time"
 
+	"durablefuture/internal/config"
+	"durablefuture/internal/constants"
 	"durablefuture/internal/converter"
 	"durablefuture/internal/natz"
 	"durablefuture/internal/types"
@@ -65,6 +66,7 @@ func newClient() (*impl, error) {
 // ExecuteWorkflow implements Client.
 // It starts a workflow execution by sending a command request to the manager and waits for the reply containing the workflow ID.
 func (c *impl) ExecuteWorkflow(ctx context.Context, workflowFn any, input ...any) (workflow.Future, error) {
+	appConfig := config.LoadConfig()
 
 	workflowName, err := utils.ExtractFullFunctionName(workflowFn)
 	if err != nil {
@@ -91,11 +93,11 @@ func (c *impl) ExecuteWorkflow(ctx context.Context, workflowFn any, input ...any
 		return nil, fmt.Errorf("failed to serialize start workflow command: %w", err)
 	}
 
-	reqCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	reqCtx, cancel := context.WithTimeout(ctx, appConfig.Timeouts.RequestTimeout)
 	defer cancel()
 
 	log.Printf("request: %v", startWorkflowCommand)
-	reply, err := c.conn.NATS().RequestWithContext(reqCtx, "command.request.start", commandData)
+	reply, err := c.conn.NATS().RequestWithContext(reqCtx, constants.CommandRequestStart, commandData)
 	if err != nil {
 		log.Printf("err: %v", err)
 		if errors.Is(err, nats.ErrNoResponders) {
@@ -103,9 +105,6 @@ func (c *impl) ExecuteWorkflow(ctx context.Context, workflowFn any, input ...any
 		}
 		return nil, fmt.Errorf("failed to send start workflow request: %w", err)
 	}
-
-	log.Printf("=== RAW REPLY DATA: %s ===", string(reply.Data))
-	log.Printf("=== REPLY LENGTH: %d ===", len(reply.Data))
 
 	var parsedReply types.StartWorkflowReply
 	err = c.converter.From(reply.Data, &parsedReply)

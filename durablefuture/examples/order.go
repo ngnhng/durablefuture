@@ -20,6 +20,8 @@ import (
 	"log"
 	"time"
 
+	"durablefuture/internal/config"
+	"durablefuture/internal/constants"
 	"durablefuture/workflow"
 )
 
@@ -79,13 +81,15 @@ func OrderWorkflow(ctx workflow.Context, customerId string, productId string, am
 func ChargeCreditCardActivity(ctx context.Context, customerId string, amount float64) (any, error) {
 	log.Printf("charge credit card activity")
 
+	appConfig := config.LoadConfig()
+	
 	// Simulate some processing time
-	time.Sleep(10 * time.Second)
+	time.Sleep(appConfig.Activity.ChargeProcessingTime)
 
 	// Simulate potential failure (5% chance)
 	// In a real implementation, this would call a payment gateway
 	customerID := fmt.Sprintf("%v", customerId)
-	if customerID == "fail_customer" {
+	if customerID == constants.TestFailureCustomerID {
 		return nil, fmt.Errorf("credit card declined")
 	}
 
@@ -102,14 +106,16 @@ func ChargeCreditCardActivity(ctx context.Context, customerId string, amount flo
 func ShipPackageActivity(ctx context.Context, chargeResult ChargeResult) (any, error) {
 	log.Printf("ship activity")
 
+	appConfig := config.LoadConfig()
+
 	// Simulate some processing time
-	time.Sleep(3 * time.Second)
+	time.Sleep(appConfig.Activity.ShipProcessingTime)
 
 	// In a real implementation, this would call a shipping service
 	result := ShipResult{
 		TrackingID:        fmt.Sprintf("track_%d", time.Now().UnixNano()),
-		Carrier:           "FastShip Express",
-		EstimatedDelivery: time.Now().Add(3 * 24 * time.Hour), // 3 days from now
+		Carrier:           constants.DefaultCarrier,
+		EstimatedDelivery: time.Now().Add(time.Duration(appConfig.Activity.ShippingDays) * 24 * time.Hour),
 	}
 
 	return result, nil
@@ -117,7 +123,8 @@ func ShipPackageActivity(ctx context.Context, chargeResult ChargeResult) (any, e
 
 // DelayedActivity is used in the timer workflow example
 func DelayedActivity(ctx context.Context, input any) (any, error) {
-	time.Sleep(1 * time.Second)
+	appConfig := config.LoadConfig()
+	time.Sleep(appConfig.Activity.DelayedActivityTime)
 
 	result := map[string]any{
 		"message":   "Delayed activity completed",

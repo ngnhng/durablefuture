@@ -21,6 +21,7 @@ import (
 	"os"
 
 	"durablefuture/internal/cmd"
+	"durablefuture/internal/config"
 )
 
 func main() {
@@ -49,12 +50,14 @@ func main() {
 }
 
 func printUsage() {
+	appConfig := config.LoadConfig()
+	
 	fmt.Printf("Usage: %s <command> [options]\n", os.Args[0])
 	fmt.Println()
 	fmt.Println("Available commands:")
 	fmt.Println("  serve    Start the DurableFuture manager server")
 	fmt.Println()
 	fmt.Println("\tServer options:")
-	fmt.Println("\t  -host string    NATS server host (default \"localhost\")")
-	fmt.Println("\t  -port string    NATS server port (default \"4222\")")
+	fmt.Printf("\t  -host string    NATS server host (default \"%s\")\n", appConfig.Server.Host)
+	fmt.Printf("\t  -port string    NATS server port (default \"%s\")\n", appConfig.Server.Port)
 }
