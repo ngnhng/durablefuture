@@ -137,6 +137,31 @@ log.Printf("result: %v", result)
 
 DurableFuture works by leveraging the event sourcing pattern, recording the outcome of Activities within the Workflow. For example, results of operations such as making an API call or a database transaction will be persisted as Events in a NATS Jetstream. So in the event the current Workflow crashed or interrupted, it will be re-run on one of the available Workflow Workers. However, instead of executing the Activities that have already been done, it will return the result from the first successful execution that is being stored on the Event Stream.
 
+## Web Frontend
+
+DurableFuture now includes a modern web interface for workflow visualization and management:
+
+### Features
+- 🎯 **Execute Workflows**: Interactive forms for workflow execution with real-time parameter input
+- 📊 **Visual Dashboard**: Clean, responsive interface showing workflow status and progress  
+- 📈 **Real-time Monitoring**: Auto-refresh functionality with live workflow updates
+- 🔍 **History Tracking**: Detailed execution history and event timeline for each workflow
+- 🌐 **ConnectRPC Integration**: Modern gRPC-web compatible API using ConnectRPC
+
+### Access
+When running the server, access the web interface at: **http://localhost:8080**
+
+![Workflow Frontend](https://github.com/user-attachments/assets/46d7ef57-ecf4-4b02-a3c9-4c8178bffd98)
+
+### Quick Demo
+1. Start the services: `docker-compose up`
+2. Open http://localhost:8080 in your browser
+3. Select "Order Processing Workflow" 
+4. Fill in the order parameters (customer ID, product, amount, quantity)
+5. Click "Execute Workflow" and watch real-time progress
+
+![Workflow Execution](https://github.com/user-attachments/assets/5b718cec-9dc6-41d5-9da3-d026453adc26)
+
 Consider the previous example:
 
 If the workflow runs normally without being interrupted, then the event log at the end might look something like this:

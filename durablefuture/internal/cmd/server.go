@@ -26,6 +26,7 @@ import (
 	"durablefuture/internal/logger"
 	"durablefuture/internal/manager"
 	"durablefuture/internal/types"
+	"durablefuture/internal/webapi"
 )
 
 // ServerCommand implements the Command interface for starting the server
@@ -83,9 +84,22 @@ func (sc *ServerCommand) run(ctx context.Context, host, port string) error {
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
-	errCh := make(chan error, 1)
+	errCh := make(chan error, 2)
+	
+	// Start the manager
 	go func() {
 		errCh <- mgr.Run(ctx)
+	}()
+
+	// Start the web API server
+	go func() {
+		webServer, webErr := sc.startWebServer(ctx)
+		if webErr != nil {
+			slog.ErrorContext(ctx, "Failed to start web server", "error", webErr)
+			errCh <- webErr
+			return
+		}
+		errCh <- webServer.Start(ctx)
 	}()
 
 	select {
@@ -93,7 +107,7 @@ func (sc *ServerCommand) run(ctx context.Context, host, port string) error {
 		slog.InfoContext(ctx, "Shutdown signal received...")
 	case err := <-errCh:
 		if err != nil {
-			slog.ErrorContext(ctx, "Manager error", "error", err)
+			slog.ErrorContext(ctx, "Server error", "error", err)
 			return err
 		}
 	}
@@ -101,4 +115,15 @@ func (sc *ServerCommand) run(ctx context.Context, host, port string) error {
 	slog.InfoContext(ctx, "Shutting down...")
 	cancel()
 	return nil
+}
+
+// startWebServer initializes and returns the web API server
+func (sc *ServerCommand) startWebServer(ctx context.Context) (*webapi.Server, error) {
+	webServer, err := webapi.NewServer(ctx, ":8080")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create web server: %w", err)
+	}
+	
+	slog.InfoContext(ctx, "Web server created successfully", "addr", ":8080")
+	return webServer, nil
 }
