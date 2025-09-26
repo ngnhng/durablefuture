@@ -32,7 +32,7 @@ type WorkflowEventType int
 const (
 	WorkflowStartedEvent WorkflowEventType = iota
 	ActivityTaskScheduledEvent
-	ActivityStarted
+	ActivityStarted // TODO: need for server-side timer tracking to work
 	ActivityCompletedEvent
 	ActivityFailedEvent
 	WorkflowFailed

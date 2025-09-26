@@ -20,7 +20,7 @@ import (
 	"log"
 	"time"
 
-	"durablefuture/workflow"
+	"durablefuture/sdk/workflow"
 )
 
 // OrderInfo represents the input to the order workflow

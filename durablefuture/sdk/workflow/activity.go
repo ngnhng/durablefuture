@@ -77,5 +77,5 @@ func (r *RetryPolicy) ShouldRetry(attempt int, err error) bool {
 }
 
 func WithActivityOptions(ctx Context, opts ActivityOptions) Context {
-
+	return ctx.WithValue(activityOptionsKey{}, opts)
 }
