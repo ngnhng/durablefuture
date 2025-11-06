@@ -12,9 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package serde
+syntax = "proto3";
 
-type BinarySerde interface {
-	SerializeBinary(value any) ([]byte, error)
-	DeserializeBinary(data []byte, valuePtr any) error
+package api.proto.command.v1;
+
+option go_package = "github.com/ngnhng/durablefuture/internal/gen/go/api/proto/command/v1;commandv1";
+
+message CommandRequest {
+  string request_id = 1;
+}
+
+message CommandResponse {
+  string status = 1;
+}
+
+service CommandService {
+  rpc Command(CommandRequest) returns (CommandResponse);
 }

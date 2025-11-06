@@ -12,9 +12,33 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package serde
+package worker
 
-type BinarySerde interface {
-	SerializeBinary(value any) ([]byte, error)
-	DeserializeBinary(data []byte, valuePtr any) error
+import (
+	"context"
+
+	clientpkg "github.com/ngnhng/durablefuture/pkg/client-sdk/client"
+	"github.com/ngnhng/durablefuture/pkg/client-sdk/internal"
+)
+
+type (
+	Worker interface {
+		Registry
+		Run(ctx context.Context) error
+	}
+
+	Registry interface {
+		WorkflowRegistry
+		ActivityRegistry
+	}
+
+	WorkflowRegistry = internal.WorkflowRegistry
+
+	ActivityRegistry = internal.ActivityRegistry
+
+	Options = internal.WorkerOptions
+)
+
+func NewWorker(c clientpkg.Client, options *Options) (Worker, error) {
+	return internal.NewWorker(c, options)
 }

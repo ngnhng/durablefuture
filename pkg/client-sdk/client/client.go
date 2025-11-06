@@ -12,9 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package serde
+package client
 
-type BinarySerde interface {
-	SerializeBinary(value any) ([]byte, error)
-	DeserializeBinary(data []byte, valuePtr any) error
+import "github.com/ngnhng/durablefuture/pkg/client-sdk/internal"
+
+type (
+	Client  = internal.Client
+	Options = internal.ClientOptions
+)
+
+// NewClient creates a client using the provided Options.
+func NewClient(options *Options) (Client, error) {
+	return internal.NewClient(options)
 }

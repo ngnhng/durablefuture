@@ -12,9 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package serde
+package types
 
-type BinarySerde interface {
-	SerializeBinary(value any) ([]byte, error)
-	DeserializeBinary(data []byte, valuePtr any) error
+import "github.com/gofrs/uuid/v5"
+
+type EventID uuid.UUID
+
+func (id EventID) String() string {
+	return id.String()
 }

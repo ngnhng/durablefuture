@@ -12,9 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package serde
+package workflow
 
-type BinarySerde interface {
-	SerializeBinary(value any) ([]byte, error)
-	DeserializeBinary(data []byte, valuePtr any) error
-}
+import (
+	"github.com/ngnhng/durablefuture/pkg/client-sdk/internal"
+)
+
+// Future is an interface that represents the result of an asynchronous operation.
+type Future = internal.Future

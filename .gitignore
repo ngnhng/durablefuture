@@ -90,3 +90,6 @@ tramp
 # Vendor
 vendor/
 vendor
+
+.gocache
+.gomodcache
