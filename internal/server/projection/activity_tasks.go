@@ -19,7 +19,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 
+	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 	"github.com/ngnhng/durablefuture/api"
 	"github.com/ngnhng/durablefuture/api/serde"
@@ -41,9 +43,9 @@ func ActivityTasks(ctx context.Context, conn *jetstreamx.Connection, _ serde.Bin
 	}
 
 	cc, err := consumer.Consume(func(msg jetstream.Msg) {
-		var event api.WorkflowEvent
-		if err := json.Unmarshal(msg.Data(), &event); err != nil {
-			slog.Info(fmt.Sprintf("PROJECTOR/ACT: could not unmarshal event, terminating: %v", err))
+		event, err := decodeWorkflowEvent(msg)
+		if err != nil {
+			slog.Info(fmt.Sprintf("PROJECTOR/ACT: could not decode event, terminating: %v", err))
 			msg.Term()
 			return
 		}
@@ -71,17 +73,28 @@ func ActivityTasks(ctx context.Context, conn *jetstreamx.Connection, _ serde.Bin
 				return
 			}
 
-			taskSubject := fmt.Sprintf("activity.%s.tasks", e.ID)
-			if _, err = js.Publish(
+			taskSubject := fmt.Sprintf("activity.%s.tasks", strings.Split(msg.Subject(), ".")[1])
+			msgID := fmt.Sprintf("actask-%s-%d", e.ID, meta.Sequence.Consumer)
+			if _, err = js.PublishMsg(
 				ctx,
-				taskSubject,
-				taskData,
-				jetstream.WithMsgID(fmt.Sprintf("actask-%s-%d", e.ID, meta.Sequence.Consumer)),
+				&nats.Msg{
+					Subject: taskSubject,
+					Data:    taskData,
+				},
+				jetstream.WithMsgID(msgID),
 			); err != nil {
 				slog.Debug(fmt.Sprintf("PROJECTOR/ACT: failed to publish activity task for %s: %v", e.ID, err))
 				msg.Nak()
 				return
 			}
+			slog.Info("PROJECTOR/ACT: created activity task",
+				"workflow_id", e.ID,
+				"activity_fn", e.ActivityFnName,
+				"subject", taskSubject,
+				"msg_id", msgID,
+			)
+		default:
+			slog.Debug("PROJECTOR/ACT: ignoring history event", "type", fmt.Sprintf("%T", event))
 		}
 		msg.Ack()
 	})

@@ -125,7 +125,7 @@ func (c *clientImpl) ExecuteWorkflow(ctx context.Context, workflowFn any, input 
 
 	workflowId, _ := uuid.FromString(reply.WorkflowID)
 
-	return NewExecution(c, nil, c.converter, workflowId), nil
+	return NewExecution(c, c.getConn(), c.converter, workflowId), nil
 }
 
 func (c *clientImpl) getConn() *Conn              { return c.nc }

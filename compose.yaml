@@ -38,9 +38,10 @@ services:
       - NATS_HOST=nats
       - NATS_PORT=4222
       - NATS_URL=nats://nats:4222
+    entrypoint: ["/bin/app"]
     command: ["--host", "nats", "--port", "4222"]
 
-  worker:
+  workflow-worker:
     build:
       context: .
       dockerfile: Dockerfile
@@ -52,4 +53,20 @@ services:
       - server
     environment:
       - NATS_URL=nats://nats:4222
-    command: ["-worker=both", "-nats-url=nats://nats:4222"]
+    entrypoint: ["/bin/app"]
+    command: ["-worker=workflow", "-nats-url=nats://nats:4222"]
+
+  activity-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        TARGETBIN: worker
+        TARGETPKG: ./examples/order/client
+    depends_on:
+      - nats
+      - server
+    environment:
+      - NATS_URL=nats://nats:4222
+    entrypoint: ["/bin/app"]
+    command: ["-worker=activity", "-nats-url=nats://nats:4222"]

@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strconv"
 
 	"github.com/gofrs/uuid/v5"
 	"github.com/nats-io/nats.go"
@@ -142,7 +143,15 @@ func (h *Handler) HandleRequest(msg *nats.Msg) {
 
 			subject := fmt.Sprintf(constant.HistoryPublishSubjectPattern, idStr)
 			eventBytes, _ := h.conv.SerializeBinary(event)
-			_, err = js.Publish(context.Background(), subject, eventBytes)
+			startEventMsg := &nats.Msg{
+				Subject: subject,
+				Data:    eventBytes,
+				Header: nats.Header{
+					constant.ChronicleEventNameHeader:        []string{event.EventName()},
+					constant.ChronicleAggregateVersionHeader: []string{strconv.FormatUint(1, 10)},
+				},
+			}
+			_, err = js.PublishMsg(context.Background(), startEventMsg)
 			if err != nil {
 				slog.Debug(fmt.Sprintf("error: %v", err))
 				reply, _ := json.Marshal(api.StartWorkflowReply{

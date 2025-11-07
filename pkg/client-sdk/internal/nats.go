@@ -18,17 +18,20 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
+	"github.com/ngnhng/durablefuture/api"
 	"github.com/ngnhng/durablefuture/api/serde"
 )
 
 type (
 	IdentifierManager interface {
 		Namespace() string
-		TaskStreamName() string
+		WorkflowTaskStreamName() string
+		ActivityTaskStreamName() string
 
 		WorkflowTaskFilterSubject() string
 		ActivityTaskFilterSubject() string
@@ -43,15 +46,31 @@ func (i *idManager) Namespace() string {
 	return i.ns
 }
 
-func (i *idManager) TaskStreamName() string {
-	return i.ns + "_WORKFLOW_TASKS"
+func (i *idManager) WorkflowTaskStreamName() string {
+	if i.ns == "" {
+		return api.WorkflowTasksStream
+	}
+	return i.ns + "_" + api.WorkflowTasksStream
+}
+
+func (i *idManager) ActivityTaskStreamName() string {
+	if i.ns == "" {
+		return api.ActivityTasksStream
+	}
+	return i.ns + "_" + api.ActivityTasksStream
 }
 
 func (i *idManager) WorkflowTaskFilterSubject() string {
+	if i.ns == "" {
+		return api.WorkflowTasksFilterSubjectPattern
+	}
 	return fmt.Sprintf("%s.%s", i.ns, "tasks.workflow")
 }
 
 func (i *idManager) ActivityTaskFilterSubject() string {
+	if i.ns == "" {
+		return api.ActivityTasksFilterSubjectPattern
+	}
 	return fmt.Sprintf("%s.%s.*.%s", i.ns, "tasks", "activity")
 }
 
@@ -70,9 +89,7 @@ func from(nc *nats.Conn, namespace string, conv serde.BinarySerde) (*Conn, error
 		nc.Close()
 		return nil, fmt.Errorf("failed to create JetStream context: %w", err)
 	}
-	if namespace == "" {
-		namespace = "default"
-	}
+	namespace = strings.TrimSpace(namespace)
 	if conv == nil {
 		conv = &serde.JsonSerde{}
 	}

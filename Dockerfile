@@ -12,21 +12,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM golang:1.24-alpine AS builder
+FROM golang:1.25.1-alpine AS builder
 
 ARG TARGETBIN=server
 ARG TARGETPKG=./cmd/durablefuture-server
 ARG TARGETARCH
-ARG GOOS=linux
 
 WORKDIR /src
 
+ENV GOFLAGS="-mod=vendor"
+
 COPY go.mod go.sum ./
-RUN go mod download
+COPY internal/third_party/chronicle ./internal/third_party/chronicle
+COPY vendor ./vendor
 
 COPY . .
 
-RUN CGO_ENABLED=0 GOOS=${GOOS} GOARCH=${TARGETARCH:-amd64} \
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH:-amd64} \
     go build -ldflags="-s -w" -o /out/${TARGETBIN} ${TARGETPKG}
 
 FROM gcr.io/distroless/static-debian12

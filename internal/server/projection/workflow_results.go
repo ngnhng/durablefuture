@@ -16,32 +16,31 @@ package projection
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 
 	"github.com/nats-io/nats.go/jetstream"
 	"github.com/ngnhng/durablefuture/api"
-	constant "github.com/ngnhng/durablefuture/api"
 	"github.com/ngnhng/durablefuture/api/serde"
 	jetstreamx "github.com/ngnhng/durablefuture/internal/server/infra/jetstream"
 )
 
 // WorkflowResults updates the result KV bucket when workflows complete.
 func WorkflowResults(ctx context.Context, conn *jetstreamx.Connection, conv serde.BinarySerde) error {
-	consumer, err := conn.EnsureConsumer(ctx, constant.WorkflowHistoryStream, jetstream.ConsumerConfig{
-		Durable:       constant.WorkflowResultProjectorConsumer,
+	consumer, err := conn.EnsureConsumer(ctx, api.WorkflowHistoryStream, jetstream.ConsumerConfig{
+		Durable:       api.WorkflowResultProjectorConsumer,
 		DeliverPolicy: jetstream.DeliverAllPolicy,
 		AckPolicy:     jetstream.AckExplicitPolicy,
-		FilterSubject: constant.HistoryFilterSubjectPattern,
+		FilterSubject: api.HistoryFilterSubjectPattern,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create workflow result projector consumer: %w", err)
 	}
 
 	cc, err := consumer.Consume(func(msg jetstream.Msg) {
-		var event api.WorkflowEvent
-		if err := json.Unmarshal(msg.Data(), &event); err != nil {
+		event, err := decodeWorkflowEvent(msg)
+		if err != nil {
+			slog.Info(fmt.Sprintf("PROJECTOR/WF_RESULT: could not decode event, terminating: %v", err))
 			msg.Term()
 			return
 		}
@@ -51,7 +50,7 @@ func WorkflowResults(ctx context.Context, conn *jetstreamx.Connection, conv serd
 		case *api.WorkflowCompleted:
 			result, _ := conv.SerializeBinary(e.Result)
 			slog.Info(fmt.Sprintf("PROJECTOR/WF_RESULT: updating KV: %v - %v", e.ID, string(result)))
-			if _, err := conn.Set(ctx, constant.WorkflowResultBucket, string(e.ID), result); err != nil {
+			if _, err := conn.Set(ctx, api.WorkflowResultBucket, string(e.ID), result); err != nil {
 				slog.Error("PROJECTOR/WF_RESULT: failed to set workflow result", "workflow_id", e.ID, "error", err)
 				msg.Nak()
 				return

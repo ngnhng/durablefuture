@@ -43,19 +43,33 @@ func (c *workflowContext) recordThat(e api.WorkflowEvent) error {
 func (c *workflowContext) Apply(e api.WorkflowEvent) error {
 	switch evt := e.(type) {
 	case *api.WorkflowStarted:
+		c.id = evt.ID
 		c.workflowFunctionName = evt.WorkflowFnName
 	case *api.ActivityScheduled:
+		c.id = evt.ID
 		c.workflowFunctionName = evt.WorkflowFnName
 	case *api.ActivityStarted:
+		c.id = evt.ID
 		c.workflowFunctionName = evt.WorkflowFnName
 	case *api.ActivityCompleted:
+		c.id = evt.ID
 		c.workflowFunctionName = evt.WorkflowFnName
-		c.activityResult[evt.ActivityFnName] = evt.Result
+		entry := c.ensureActivityReplay(evt.ActivityFnName)
+		entry.history = append(entry.history, activityReplayRecord{
+			result: evt.Result,
+		})
 	case *api.ActivityFailed:
+		c.id = evt.ID
 		c.workflowFunctionName = evt.WorkflowFnName
+		entry := c.ensureActivityReplay(evt.ActivityFnName)
+		entry.history = append(entry.history, activityReplayRecord{
+			err: fmt.Errorf("%s", evt.Error),
+		})
 	case *api.WorkflowFailed:
+		c.id = evt.ID
 		c.workflowFunctionName = evt.WorkflowFnName
 	case *api.WorkflowCompleted:
+		c.id = evt.ID
 		c.workflowFunctionName = evt.WorkflowFnName
 	default:
 		return fmt.Errorf("unknown event type: %T", e)

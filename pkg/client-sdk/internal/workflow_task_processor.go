@@ -16,7 +16,9 @@ package internal
 
 import (
 	"context"
+	"fmt"
 	"iter"
+	"log/slog"
 	"sync"
 
 	"github.com/nats-io/nats.go/jetstream"
@@ -25,33 +27,78 @@ import (
 
 var _ TaskProcessor = (*Conn)(nil)
 
-func (c *Conn) ReceiveTask(ctx context.Context) (iter.Seq[*TaskToken], error) {
+func (c *Conn) ReceiveTask(ctx context.Context, includeWorkflow, includeActivity bool) (iter.Seq[*TaskToken], error) {
+	if !includeWorkflow && !includeActivity {
+		return nil, fmt.Errorf("at least one task type must be enabled")
+	}
+
 	consumerCtx, cancelConsumers := context.WithCancel(ctx)
-	defer cancelConsumers()
-
-	workflowTaskConsumer, err := c.EnsureConsumer(
-		consumerCtx,
-		c.TaskStreamName(),
-		jetstream.ConsumerConfig{
-			FilterSubject: c.WorkflowTaskFilterSubject(),
-		})
-	if err != nil {
-		cancelConsumers()
-		return nil, err
-	}
-
-	activityTaskConsumer, err := c.EnsureConsumer(
-		consumerCtx,
-		c.TaskStreamName(),
-		jetstream.ConsumerConfig{
-			FilterSubject: c.ActivityTaskFilterSubject(),
-		})
-	if err != nil {
-		cancelConsumers()
-		return nil, err
-	}
-
 	taskChannel := make(chan *TaskToken)
+
+	type consumerHandle struct {
+		consumer jetstream.Consumer
+		taskType string
+		handler  func(msg jetstream.Msg)
+	}
+
+	var consumers []consumerHandle
+
+	if includeWorkflow {
+		workflowTaskConsumer, err := c.EnsureConsumer(
+			consumerCtx,
+			c.WorkflowTaskStreamName(),
+			jetstream.ConsumerConfig{
+				Name:          api.WorkflowTaskWorkerConsumer,
+				Durable:       api.WorkflowTaskWorkerConsumer,
+				FilterSubject: c.WorkflowTaskFilterSubject(),
+				AckPolicy:     jetstream.AckExplicitPolicy,
+			})
+		if err != nil {
+			cancelConsumers()
+			return nil, err
+		}
+		consumers = append(consumers, consumerHandle{
+			consumer: workflowTaskConsumer,
+			taskType: "workflow",
+			handler: func(msg jetstream.Msg) {
+				task := &api.WorkflowTask{}
+				if err := c.converter.DeserializeBinary(msg.Data(), task); err != nil {
+					msg.Term()
+					return
+				}
+				c.enqueueTask(consumerCtx, task, msg, taskChannel)
+			},
+		})
+	}
+
+	if includeActivity {
+		activityTaskConsumer, err := c.EnsureConsumer(
+			consumerCtx,
+			c.ActivityTaskStreamName(),
+			jetstream.ConsumerConfig{
+				Name:          api.ActivityTaskWorkerConsumer,
+				Durable:       api.ActivityTaskWorkerConsumer,
+				FilterSubject: c.ActivityTaskFilterSubject(),
+				AckPolicy:     jetstream.AckExplicitPolicy,
+			})
+		if err != nil {
+			cancelConsumers()
+			return nil, err
+		}
+		consumers = append(consumers, consumerHandle{
+			consumer: activityTaskConsumer,
+			taskType: "activity",
+			handler: func(msg jetstream.Msg) {
+				task := &api.ActivityTask{}
+				if err := c.converter.DeserializeBinary(msg.Data(), task); err != nil {
+					msg.Term()
+					return
+				}
+				c.enqueueTask(consumerCtx, task, msg, taskChannel)
+			},
+		})
+	}
+
 	var wg sync.WaitGroup
 
 	go func() {
@@ -59,57 +106,24 @@ func (c *Conn) ReceiveTask(ctx context.Context) (iter.Seq[*TaskToken], error) {
 		close(taskChannel)
 	}()
 
-	wg.Go(func() {
-		defer cancelConsumers()
+	for _, handle := range consumers {
+		wg.Add(1)
+		go func(ch consumerHandle) {
+			defer wg.Done()
+			defer cancelConsumers()
 
-		consumeCtx, err := workflowTaskConsumer.Consume(func(msg jetstream.Msg) {
-			var task api.WorkflowTask
-			err := c.converter.DeserializeBinary(msg.Data(), &task)
+			consumeCtx, err := ch.consumer.Consume(func(msg jetstream.Msg) {
+				ch.handler(msg)
+			})
 			if err != nil {
-				// kill poison pill
-				msg.Term()
+				slog.Error("task consumer failed", "type", ch.taskType, "error", err)
+				return
 			}
+			defer consumeCtx.Stop()
 
-			taskChannel <- &TaskToken{
-				Task: &task,
-				Ack:  msg.DoubleAck,
-				Nak:  func(ctx context.Context) error { return msg.Nak() },
-				Term: func(ctx context.Context) error { return msg.Term() },
-			}
-		})
-		if err != nil {
-			return
-		}
-		defer consumeCtx.Stop()
-
-		<-consumerCtx.Done()
-	})
-
-	wg.Go(func() {
-		defer cancelConsumers()
-
-		consumeCtx, err := activityTaskConsumer.Consume(func(msg jetstream.Msg) {
-			var task api.ActivityTask
-			err := c.converter.DeserializeBinary(msg.Data(), &task)
-			if err != nil {
-				// kill poison pill
-				msg.Term()
-			}
-
-			taskChannel <- &TaskToken{
-				Task: &task,
-				Ack:  msg.DoubleAck,
-				Nak:  func(ctx context.Context) error { return msg.Nak() },
-				Term: func(ctx context.Context) error { return msg.Term() },
-			}
-		})
-		if err != nil {
-			return
-		}
-		defer consumeCtx.Stop()
-
-		<-consumerCtx.Done()
-	})
+			<-consumerCtx.Done()
+		}(handle)
+	}
 
 	return func(callback func(*TaskToken) bool) {
 		defer cancelConsumers()
@@ -117,15 +131,35 @@ func (c *Conn) ReceiveTask(ctx context.Context) (iter.Seq[*TaskToken], error) {
 			select {
 			case <-ctx.Done():
 				return
-			case t := <-taskChannel:
+			case t, ok := <-taskChannel:
+				if !ok {
+					return
+				}
+				if t == nil {
+					continue
+				}
 				switch t.Task.(type) {
 				case *api.WorkflowTask, *api.ActivityTask:
 					callback(t)
 				default:
-					// poison pill
 					t.Term(consumerCtx)
 				}
 			}
 		}
 	}, nil
+}
+
+func (c *Conn) enqueueTask(ctx context.Context, task api.Task, msg jetstream.Msg, taskChannel chan<- *TaskToken) {
+	token := &TaskToken{
+		Task: task,
+		Ack:  msg.DoubleAck,
+		Nak:  func(context.Context) error { return msg.Nak() },
+		Term: func(context.Context) error { return msg.Term() },
+	}
+
+	select {
+	case <-ctx.Done():
+		_ = msg.Nak()
+	case taskChannel <- token:
+	}
 }

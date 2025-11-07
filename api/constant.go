@@ -21,14 +21,19 @@ const (
 	ActivityTasksStream   = "ACTIVITY_TASKS"
 )
 
+// NATS Subject Prefix
+const (
+	HistorySubjectPrefix = "history"
+)
+
 // NATS Subject Format
 const (
-	HistoryPublishSubjectPattern = "history.%s" // workflowID
+	HistoryPublishSubjectPattern = HistorySubjectPrefix + ".%s" // workflowID
 )
 
 // NATS Subject Patterns
 const (
-	HistoryFilterSubjectPattern = "history.>"
+	HistoryFilterSubjectPattern = HistorySubjectPrefix + ".>"
 
 	CommandRequestSubjectPattern = "command.request.>"
 
@@ -56,4 +61,10 @@ const (
 const (
 	WorkflowResultBucket = "workflow-result"
 	WorkflowInputBucket  = "workflow-input"
+)
+
+// JetStream Headers
+const (
+	ChronicleEventNameHeader        = "Chronicle-Event-Name"
+	ChronicleAggregateVersionHeader = "Chronicle-Aggregate-Version"
 )

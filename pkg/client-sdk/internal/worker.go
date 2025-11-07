@@ -22,6 +22,7 @@ import (
 	"log"
 	"log/slog"
 	"reflect"
+	"strings"
 
 	"github.com/DeluxeOwl/chronicle"
 	"github.com/DeluxeOwl/chronicle/eventlog"
@@ -40,7 +41,7 @@ type (
 	}
 
 	TaskProcessor interface {
-		ReceiveTask(ctx context.Context) (iter.Seq[*TaskToken], error)
+		ReceiveTask(ctx context.Context, includeWorkflow, includeActivity bool) (iter.Seq[*TaskToken], error)
 	}
 
 	WorkerOptions struct {
@@ -74,12 +75,21 @@ type workerImpl struct {
 }
 
 func NewWorker(c Client, opts *WorkerOptions) (*workerImpl, error) {
+	if opts == nil {
+		opts = &WorkerOptions{}
+	}
+
+	streamName := buildHistoryStreamName(opts)
+	subjectPrefix := opts.Namespace
+	if subjectPrefix == "" {
+		subjectPrefix = api.HistorySubjectPrefix
+	}
 
 	// TODO: api based config
 	log, err := eventlog.NewNATSJetStream(
 		c.getConn().NATS(),
-		eventlog.WithNATSStreamName(opts.TenantID+"_"+opts.Namespace+"_"+api.WorkflowHistoryStream),
-		eventlog.WithNATSSubjectPrefix(opts.Namespace),
+		eventlog.WithNATSStreamName(streamName),
+		eventlog.WithNATSSubjectPrefix(subjectPrefix),
 	)
 	if err != nil {
 		return nil, err
@@ -122,6 +132,22 @@ func (w *workerImpl) RegisterActivity(fn any, opts ...ActivityRegisterOption) er
 	return nil
 }
 
+func buildHistoryStreamName(opts *WorkerOptions) string {
+	if opts == nil {
+		return api.WorkflowHistoryStream
+	}
+
+	var parts []string
+	if opts.TenantID != "" {
+		parts = append(parts, opts.TenantID)
+	}
+	if opts.Namespace != "" {
+		parts = append(parts, opts.Namespace)
+	}
+	parts = append(parts, api.WorkflowHistoryStream)
+	return strings.Join(parts, "_")
+}
+
 func (w *workerImpl) Run(ctx context.Context) error {
 	g, gCtx := errgroup.WithContext(ctx)
 
@@ -147,7 +173,13 @@ func (w *workerImpl) runProcessingLoop(ctx context.Context) error {
 	// Create a new errgroup to manage a goroutine for each task.
 	g, gCtx := errgroup.WithContext(ctx)
 
-	iter, err := w.ReceiveTask(gCtx)
+	workflowTasksEnabled := w.workflowRegistry.size() > 0
+	activityTasksEnabled := w.activityRegistry.size() > 0
+	if !workflowTasksEnabled && !activityTasksEnabled {
+		return fmt.Errorf("worker has no registered workflows or activities")
+	}
+
+	iter, err := w.ReceiveTask(gCtx, workflowTasksEnabled, activityTasksEnabled)
 	if err != nil {
 		return err
 	}
@@ -164,6 +196,9 @@ func (w *workerImpl) runProcessingLoop(ctx context.Context) error {
 						token.Term(gCtx)
 						return err
 					}
+
+					wfctx.Context = gCtx
+					wfctx.converter = w.converter
 
 					err = w.processWorkflowTask(wfctx, task)
 					if err != nil {
@@ -189,6 +224,9 @@ func (w *workerImpl) runProcessingLoop(ctx context.Context) error {
 						token.Term(gCtx)
 						return err
 					}
+
+					wfctx.Context = gCtx
+					wfctx.converter = w.converter
 
 					err = w.processActivityTask(wfctx, task)
 					if err != nil {
@@ -252,16 +290,17 @@ func (w *workerImpl) processWorkflowTask(wfctx *workflowContext, task *api.Workf
 	var pending bool
 	var panicked bool
 
-	err := func() error {
+	execErr := func() (err error) {
 		defer func() {
 			if r := recover(); r != nil {
-				if _, ok := r.(ErrorBlockingFuture); !ok {
-					log.Printf("panic but not a blocking future: %v\n", r)
+				panicked = true
+				if _, ok := r.(ErrorBlockingFuture); ok {
+					pending = true
+					return
 				}
-			} else {
-				pending = true
+				log.Printf("panic but not a blocking future: %v\n", r)
+				err = fmt.Errorf("workflow panic: %v", r)
 			}
-			panicked = true
 		}()
 
 		fn, err := w.workflowRegistry.get(task.WorkflowFn)
@@ -289,24 +328,34 @@ func (w *workerImpl) processWorkflowTask(wfctx *workflowContext, task *api.Workf
 		return nil
 	}()
 
-	if panicked {
-		if !pending {
-			wfctx.recordThat(&api.WorkflowFailed{
-				ID:             api.WorkflowID(task.WorkflowID),
-				WorkflowFnName: task.WorkflowFn,
-				Error:          err.Error(),
-			})
+	switch {
+	case panicked && pending:
+		return nil
+	case panicked && !pending:
+		if execErr == nil {
+			execErr = fmt.Errorf("workflow execution panicked")
 		}
-	} else {
+		wfctx.recordThat(&api.WorkflowFailed{
+			ID:             api.WorkflowID(task.WorkflowID),
+			WorkflowFnName: task.WorkflowFn,
+			Error:          execErr.Error(),
+		})
+		return execErr
+	case !panicked && execErr != nil:
+		wfctx.recordThat(&api.WorkflowFailed{
+			ID:             api.WorkflowID(task.WorkflowID),
+			WorkflowFnName: task.WorkflowFn,
+			Error:          execErr.Error(),
+		})
+		return execErr
+	default:
 		wfctx.recordThat(&api.WorkflowCompleted{
 			ID:             api.WorkflowID(task.WorkflowID),
 			WorkflowFnName: task.WorkflowFn,
-			// TODO: document this
-			Result: reflectValuesToAny(results),
+			Result:         reflectValuesToAny(results),
 		})
+		return nil
 	}
-
-	return err
 }
 
 func reflectValuesToAny(vals []reflect.Value) []any {

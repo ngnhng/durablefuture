@@ -63,14 +63,14 @@ func OrderWorkflow(ctx workflow.Context, customerID string, productID string, am
 
 	var chargeResult ChargeResult
 	if err := workflow.
-		ExecuteActivity(ctx, nil, ChargeCreditCardActivity, customerID, amount).
+		ExecuteActivity(ctx, ChargeCreditCardActivity, customerID, amount).
 		Get(ctx, &chargeResult); err != nil {
 		return nil, fmt.Errorf("credit card charge failed: %w", err)
 	}
 
 	var shipResult ShipResult
 	if err := workflow.
-		ExecuteActivity(ctx, nil, ShipPackageActivity, chargeResult).
+		ExecuteActivity(ctx, ShipPackageActivity, chargeResult).
 		Get(ctx, &shipResult); err != nil {
 		return nil, fmt.Errorf("package shipping failed: %w", err)
 	}
@@ -162,8 +162,7 @@ func main() {
 	defer nc.Close()
 
 	workflowClient, err := client.NewClient(&client.Options{
-		Conn:      nc,
-		Namespace: "dev",
+		Conn: nc,
 	})
 	if err != nil {
 		log.Fatalf("creating workflow client failed: %v", err)
@@ -197,26 +196,24 @@ func main() {
 func runWorkflowWorker(ctx context.Context, c client.Client) error {
 	workerClient, err := worker.NewWorker(c, nil)
 	if err != nil {
-		return fmt.Errorf("creating workflow worker: %w", err)
+		return fmt.Errorf("error creating workflow worker: %w", err)
 	}
 
 	log.Println("registering workflow")
 	if err := workerClient.RegisterWorkflow(OrderWorkflow); err != nil {
-		return fmt.Errorf("registering workflow: %w", err)
+		return fmt.Errorf("error registering workflow: %w", err)
 	}
 
 	if err := workerClient.Run(ctx); err != nil {
-		return fmt.Errorf("running workflow worker: %w", err)
+		return fmt.Errorf("error running workflow worker: %w", err)
 	}
 	return nil
 }
 
 func runActivityWorker(ctx context.Context, c client.Client) error {
-	workerClient, err := worker.NewWorker(c, &worker.Options{
-		Namespace: "dev",
-	})
+	workerClient, err := worker.NewWorker(c, nil)
 	if err != nil {
-		return fmt.Errorf("creating activity worker: %w", err)
+		return fmt.Errorf("error creating activity worker: %w", err)
 	}
 
 	log.Println("registering activities")
@@ -232,12 +229,12 @@ func runActivityWorker(ctx context.Context, c client.Client) error {
 
 	for _, entry := range register {
 		if err := workerClient.RegisterActivity(entry.fn); err != nil {
-			return fmt.Errorf("registering %s: %w", entry.name, err)
+			return fmt.Errorf("error registering %s: %w", entry.name, err)
 		}
 	}
 
 	if err := workerClient.Run(ctx); err != nil {
-		return fmt.Errorf("running activity worker: %w", err)
+		return fmt.Errorf("error running activity worker: %w", err)
 	}
 	return nil
 }

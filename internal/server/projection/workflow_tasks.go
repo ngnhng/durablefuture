@@ -44,9 +44,9 @@ func WorkflowTasks(ctx context.Context, conn *jetstreamx.Connection, _ serde.Bin
 	}
 
 	cc, err := consumer.Consume(func(msg jetstream.Msg) {
-		var event api.WorkflowEvent
-		if err := json.Unmarshal(msg.Data(), &event); err != nil {
-			slog.Info(fmt.Sprintf("PROJECTOR/WF: could not unmarshal event, terminating: %v", err))
+		event, err := decodeWorkflowEvent(msg)
+		if err != nil {
+			slog.Info(fmt.Sprintf("PROJECTOR/WF: could not decode event, terminating: %v", err))
 			msg.Term()
 			return
 		}
@@ -72,23 +72,9 @@ func WorkflowTasks(ctx context.Context, conn *jetstreamx.Connection, _ serde.Bin
 		case *api.ActivityCompleted:
 			shouldCreateTask = true
 			workflowFnName = e.WorkflowFnName
-
-			kv, err := js.KeyValue(ctx, constant.WorkflowInputBucket)
+			inputArgs, err = loadWorkflowInputArgs(ctx, js, workflowFnName)
 			if err != nil {
-				slog.Info(fmt.Sprintf("PROJECTOR/WF: failed to get KV store, terminating msg: %v", err))
-				msg.Term()
-				return
-			}
-
-			kvEntry, err := kv.Get(ctx, workflowFnName)
-			if err != nil {
-				slog.Info(fmt.Sprintf("PROJECTOR/WF: failed to get input args from KV for %s, terminating msg: %v", workflowFnName, err))
-				msg.Term()
-				return
-			}
-
-			if err := json.Unmarshal(kvEntry.Value(), &inputArgs); err != nil {
-				slog.Info(fmt.Sprintf("PROJECTOR/WF: failed to unmarshal input args from KV, terminating msg: %v", err))
+				slog.Info(fmt.Sprintf("PROJECTOR/WF: %v", err))
 				msg.Term()
 				return
 			}
@@ -96,9 +82,22 @@ func WorkflowTasks(ctx context.Context, conn *jetstreamx.Connection, _ serde.Bin
 		case *api.ActivityFailed:
 			slog.Info(fmt.Sprintf("PROJECTOR/WF: got ActivityFailed event: %v", event))
 			shouldCreateTask = true
-			workflowFnName = ""
+			workflowFnName = e.WorkflowFnName
+			inputArgs, err = loadWorkflowInputArgs(ctx, js, workflowFnName)
+			if err != nil {
+				slog.Info(fmt.Sprintf("PROJECTOR/WF: %v", err))
+				msg.Term()
+				return
+			}
+		case *api.ActivityScheduled:
+			// Activity scheduling does not require a workflow task; it's handled by the activity projector.
+			slog.Debug("PROJECTOR/WF: ignoring ActivityScheduled event for workflow task projection", "workflow_id", e.ID)
+			msg.Ack()
+			return
 		default:
-			slog.Error("PROJECTOR/WF: unhandled event type", "type", fmt.Sprintf("%T", event))
+			slog.Debug("PROJECTOR/WF: ignoring history event", "type", fmt.Sprintf("%T", event))
+			msg.Ack()
+			return
 		}
 
 		if shouldCreateTask {
@@ -139,4 +138,22 @@ func WorkflowTasks(ctx context.Context, conn *jetstreamx.Connection, _ serde.Bin
 	cc.Stop()
 	slog.Debug("Workflow task projector stopped.")
 	return nil
+}
+
+func loadWorkflowInputArgs(ctx context.Context, js jetstream.JetStream, workflowFnName string) ([]any, error) {
+	kv, err := js.KeyValue(ctx, constant.WorkflowInputBucket)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get KV store: %w", err)
+	}
+
+	kvEntry, err := kv.Get(ctx, workflowFnName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get input args from KV for %s: %w", workflowFnName, err)
+	}
+
+	var inputArgs []any
+	if err := json.Unmarshal(kvEntry.Value(), &inputArgs); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal input args from KV: %w", err)
+	}
+	return inputArgs, nil
 }
