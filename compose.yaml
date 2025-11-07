@@ -47,14 +47,20 @@ services:
       dockerfile: Dockerfile
       args:
         TARGETBIN: worker
-        TARGETPKG: ./examples/order/client
+        TARGETPKG: ./examples/cmd
     depends_on:
       - nats
       - server
     environment:
       - NATS_URL=nats://nats:4222
+      - EXAMPLE_SCENARIO=${EXAMPLE_SCENARIO:-order}
     entrypoint: ["/bin/app"]
-    command: ["-worker=workflow", "-nats-url=nats://nats:4222"]
+    command:
+      [
+        "-worker=workflow",
+        "-example=${EXAMPLE_SCENARIO:-order}",
+        "-nats-url=nats://nats:4222",
+      ]
 
   activity-worker:
     build:
@@ -62,11 +68,17 @@ services:
       dockerfile: Dockerfile
       args:
         TARGETBIN: worker
-        TARGETPKG: ./examples/order/client
+        TARGETPKG: ./examples/cmd
     depends_on:
       - nats
       - server
     environment:
       - NATS_URL=nats://nats:4222
+      - EXAMPLE_SCENARIO=${EXAMPLE_SCENARIO:-order}
     entrypoint: ["/bin/app"]
-    command: ["-worker=activity", "-nats-url=nats://nats:4222"]
+    command:
+      [
+        "-worker=activity",
+        "-example=${EXAMPLE_SCENARIO:-order}",
+        "-nats-url=nats://nats:4222",
+      ]

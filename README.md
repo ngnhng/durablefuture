@@ -22,10 +22,44 @@ Traditional workflow engines often require complex deployments with proprietary 
 - **Minimal operational overhead** - Just NATS + your application
 - **Production-ready foundation** - NATS is proven in high-scale environments
 
+## Running the Examples
+
+DurableFuture ships with multiple runnable scenarios (see `examples/scenarios`). A single CLI (`examples/cmd`) loads the scenario you choose so Docker Compose does not have to change when switching examples.
+
+### 1. Pick a scenario
+
+List the available scenarios:
+
+```bash
+go run ./examples/cmd -list-examples
+```
+
+Assume we want to run the recovery scenario:
+
+```bash
+export EXAMPLE_SCENARIO=order-recovery
+```
+
+### 2. Boot the infrastructure + workers
+
+`EXAMPLE_SCENARIO` is read by Docker Compose so the workflow and activity worker containers auto-load the correct workflows/activities.
+
+```bash
+docker compose up --force-recreate --build -d nats server workflow-worker activity-worker
+```
+
+### 3. Run the client locally
+
+```bash
+go run ./examples/cmd -example=${EXAMPLE_SCENARIO}
+```
+
+Change `EXAMPLE_SCENARIO` (for example `order`) and rerun the same commands to try a different demo.
+
 ## Usage
 
-- Workflow: See full version at [/examples/order.go](durablefuture/examples/order.go)
-- Usage: See full version at [/usage/main.go](usage/main.go)
+- Workflow: See full version at [/examples/scenarios/order/order.go](examples/scenarios/order/order.go)
+- Usage: See full version at [/examples/cmd/main.go](examples/cmd/main.go)
 
 ### 1. Write a workflow
 

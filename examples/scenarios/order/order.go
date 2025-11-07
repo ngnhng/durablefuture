@@ -12,29 +12,68 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package order
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"log"
 	"time"
 
-	"github.com/nats-io/nats.go"
-	"golang.org/x/sync/errgroup"
-
-	"github.com/ngnhng/durablefuture/pkg/client-sdk/client"
+	"github.com/ngnhng/durablefuture/examples/scenarios"
+	clientpkg "github.com/ngnhng/durablefuture/pkg/client-sdk/client"
 	"github.com/ngnhng/durablefuture/pkg/client-sdk/worker"
 	"github.com/ngnhng/durablefuture/pkg/client-sdk/workflow"
 )
 
-// OrderInfo represents the input to the order workflow.
-type OrderInfo struct {
-	CustomerID string  `json:"customer_id"`
-	ProductID  string  `json:"product_id"`
-	Amount     float64 `json:"amount"`
-	Quantity   int     `json:"quantity"`
+func init() {
+	scenarios.Register(Example{})
+}
+
+// Example implements the classic order workflow scenario.
+type Example struct{}
+
+func (Example) Name() string { return "order" }
+
+func (Example) RegisterWorkflows(reg worker.WorkflowRegistry) error {
+	return reg.RegisterWorkflow(OrderWorkflow)
+}
+
+func (Example) RegisterActivities(reg worker.ActivityRegistry) error {
+	for _, entry := range []struct {
+		name string
+		fn   any
+	}{
+		{"AddActivity", AddActivity},
+		{"DelayedActivity", DelayedActivity},
+		{"ChargeCreditCardActivity", ChargeCreditCardActivity},
+		{"ShipPackageActivity", ShipPackageActivity},
+	} {
+		if err := reg.RegisterActivity(entry.fn); err != nil {
+			return fmt.Errorf("register %s: %w", entry.name, err)
+		}
+	}
+	return nil
+}
+
+func (Example) RunClient(ctx context.Context, c clientpkg.Client) error {
+	future, err := c.ExecuteWorkflow(ctx, OrderWorkflow,
+		"Bob",
+		"widget-1000",
+		1000.0,
+		2,
+	)
+	if err != nil {
+		return fmt.Errorf("starting workflow failed: %w", err)
+	}
+
+	var result any
+	if err := future.Get(ctx, &result); err != nil {
+		return fmt.Errorf("waiting for workflow result failed: %w", err)
+	}
+
+	log.Printf("order workflow result: %v", result)
+	return nil
 }
 
 // ChargeResult represents the result of charging a credit card.
@@ -88,7 +127,7 @@ func OrderWorkflow(ctx workflow.Context, customerID string, productID string, am
 func ChargeCreditCardActivity(ctx context.Context, customerID string, amount float64) (any, error) {
 	log.Printf("charge credit card activity")
 
-	time.Sleep(10 * time.Second)
+	time.Sleep(2 * time.Second)
 
 	if customerID == "fail_customer" {
 		return nil, fmt.Errorf("credit card declined")
@@ -138,123 +177,17 @@ func AddActivity(ctx context.Context, input any) (any, error) {
 		return nil, fmt.Errorf("invalid input type for AddActivity")
 	}
 
-	a, ok1 := inputMap["a"].(float64)
-	b, ok2 := inputMap["b"].(float64)
-
-	if !ok1 || !ok2 {
-		return nil, fmt.Errorf("invalid numeric inputs")
+	a, ok := inputMap["a"].(float64)
+	if !ok {
+		return nil, fmt.Errorf("input 'a' must be a number")
 	}
 
-	return a + b, nil
-}
-
-func main() {
-	workerType := flag.String("worker", "both", "Type of worker to run: 'workflow', 'activity', 'both', or 'client'")
-	natsURL := flag.String("nats-url", "nats://localhost:4222", "NATS connection URL")
-	flag.Parse()
-
-	ctx := context.Background()
-
-	nc, err := nats.Connect(*natsURL)
-	if err != nil {
-		log.Fatalf("connecting to NATS failed: %v", err)
-	}
-	defer nc.Close()
-
-	workflowClient, err := client.NewClient(&client.Options{
-		Conn: nc,
-	})
-	if err != nil {
-		log.Fatalf("creating workflow client failed: %v", err)
+	b, ok := inputMap["b"].(float64)
+	if !ok {
+		return nil, fmt.Errorf("input 'b' must be a number")
 	}
 
-	switch *workerType {
-	case "workflow":
-		if err := runWorkflowWorker(ctx, workflowClient); err != nil {
-			log.Fatalf("workflow worker exited: %v", err)
-		}
-	case "activity":
-		if err := runActivityWorker(ctx, workflowClient); err != nil {
-			log.Fatalf("activity worker exited: %v", err)
-		}
-	case "both":
-		g, gCtx := errgroup.WithContext(ctx)
-		g.Go(func() error { return runWorkflowWorker(gCtx, workflowClient) })
-		g.Go(func() error { return runActivityWorker(gCtx, workflowClient) })
-		if err := g.Wait(); err != nil {
-			log.Fatalf("workers exited: %v", err)
-		}
-	case "client":
-		if err := runClient(ctx, workflowClient); err != nil {
-			log.Fatalf("client execution failed: %v", err)
-		}
-	default:
-		log.Fatalf("invalid worker type: %s. Use 'workflow', 'activity', 'both', or 'client'", *workerType)
-	}
-}
-
-func runWorkflowWorker(ctx context.Context, c client.Client) error {
-	workerClient, err := worker.NewWorker(c, nil)
-	if err != nil {
-		return fmt.Errorf("error creating workflow worker: %w", err)
-	}
-
-	log.Println("registering workflow")
-	if err := workerClient.RegisterWorkflow(OrderWorkflow); err != nil {
-		return fmt.Errorf("error registering workflow: %w", err)
-	}
-
-	if err := workerClient.Run(ctx); err != nil {
-		return fmt.Errorf("error running workflow worker: %w", err)
-	}
-	return nil
-}
-
-func runActivityWorker(ctx context.Context, c client.Client) error {
-	workerClient, err := worker.NewWorker(c, nil)
-	if err != nil {
-		return fmt.Errorf("error creating activity worker: %w", err)
-	}
-
-	log.Println("registering activities")
-	register := []struct {
-		name string
-		fn   any
-	}{
-		{"AddActivity", AddActivity},
-		{"DelayedActivity", DelayedActivity},
-		{"ChargeCreditCardActivity", ChargeCreditCardActivity},
-		{"ShipPackageActivity", ShipPackageActivity},
-	}
-
-	for _, entry := range register {
-		if err := workerClient.RegisterActivity(entry.fn); err != nil {
-			return fmt.Errorf("error registering %s: %w", entry.name, err)
-		}
-	}
-
-	if err := workerClient.Run(ctx); err != nil {
-		return fmt.Errorf("error running activity worker: %w", err)
-	}
-	return nil
-}
-
-func runClient(ctx context.Context, workflowClient client.Client) error {
-	future, err := workflowClient.ExecuteWorkflow(ctx, OrderWorkflow,
-		"Bob",
-		"widget-1000",
-		1000.0,
-		2,
-	)
-	if err != nil {
-		return fmt.Errorf("starting workflow failed: %w", err)
-	}
-
-	var result any
-	if err := future.Get(ctx, &result); err != nil {
-		return fmt.Errorf("waiting for workflow result failed: %w", err)
-	}
-
-	log.Printf("workflow result: %v", result)
-	return nil
+	return map[string]any{
+		"result": a + b,
+	}, nil
 }
