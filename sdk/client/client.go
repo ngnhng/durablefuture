@@ -12,11 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package workflow
+package client
 
-import (
-	"github.com/ngnhng/durablefuture/pkg/client-sdk/internal"
+import "github.com/ngnhng/durablefuture/sdk/internal"
+
+type (
+	Client  = internal.Client
+	Options = internal.ClientOptions
 )
 
-// Future is an interface that represents the result of an asynchronous operation.
-type Future = internal.Future
+// NewClient creates a client using the provided Options.
+func NewClient(options *Options) (Client, error) {
+	return internal.NewClient(options)
+}

@@ -21,9 +21,9 @@ import (
 	"time"
 
 	"github.com/ngnhng/durablefuture/examples/scenarios"
-	clientpkg "github.com/ngnhng/durablefuture/pkg/client-sdk/client"
-	"github.com/ngnhng/durablefuture/pkg/client-sdk/worker"
-	"github.com/ngnhng/durablefuture/pkg/client-sdk/workflow"
+	clientpkg "github.com/ngnhng/durablefuture/sdk/client"
+	"github.com/ngnhng/durablefuture/sdk/worker"
+	"github.com/ngnhng/durablefuture/sdk/workflow"
 )
 
 func init() {

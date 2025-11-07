@@ -12,33 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package worker
+package workflow
 
 import (
-	"context"
-
-	clientpkg "github.com/ngnhng/durablefuture/pkg/client-sdk/client"
-	"github.com/ngnhng/durablefuture/pkg/client-sdk/internal"
+	"github.com/ngnhng/durablefuture/sdk/internal"
 )
 
-type (
-	Worker interface {
-		Registry
-		Run(ctx context.Context) error
-	}
-
-	Registry interface {
-		WorkflowRegistry
-		ActivityRegistry
-	}
-
-	WorkflowRegistry = internal.WorkflowRegistry
-
-	ActivityRegistry = internal.ActivityRegistry
-
-	Options = internal.WorkerOptions
-)
-
-func NewWorker(c clientpkg.Client, options *Options) (Worker, error) {
-	return internal.NewWorker(c, options)
-}
+// Future is an interface that represents the result of an asynchronous operation.
+type Future = internal.Future

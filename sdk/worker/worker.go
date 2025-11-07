@@ -12,16 +12,33 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package client
+package worker
 
-import "github.com/ngnhng/durablefuture/pkg/client-sdk/internal"
+import (
+	"context"
 
-type (
-	Client  = internal.Client
-	Options = internal.ClientOptions
+	clientpkg "github.com/ngnhng/durablefuture/sdk/client"
+	"github.com/ngnhng/durablefuture/sdk/internal"
 )
 
-// NewClient creates a client using the provided Options.
-func NewClient(options *Options) (Client, error) {
-	return internal.NewClient(options)
+type (
+	Worker interface {
+		Registry
+		Run(ctx context.Context) error
+	}
+
+	Registry interface {
+		WorkflowRegistry
+		ActivityRegistry
+	}
+
+	WorkflowRegistry = internal.WorkflowRegistry
+
+	ActivityRegistry = internal.ActivityRegistry
+
+	Options = internal.WorkerOptions
+)
+
+func NewWorker(c clientpkg.Client, options *Options) (Worker, error) {
+	return internal.NewWorker(c, options)
 }

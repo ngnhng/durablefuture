@@ -19,30 +19,61 @@ import (
 	"time"
 
 	"github.com/caarlos0/env/v11"
-	internalconfig "github.com/ngnhng/durablefuture/internal/server/config"
 )
+
+// Default configuration constants tuned for SDK clients.
+const (
+	DefaultNATSHost = "localhost"
+	DefaultNATSPort = "4222"
+
+	DefaultRequestTimeout = 10 * time.Second
+	DefaultDrainTimeout   = 30 * time.Second
+	DefaultReconnectWait  = 2 * time.Second
+	DefaultPingInterval   = 2 * time.Minute
+
+	DefaultMaxReconnects = -1 // reconnect forever
+	DefaultMaxPingsOut   = 2
+)
+
+// NATSConfig holds NATS-specific configuration knobs for the SDK.
+type NATSConfig struct {
+	URL           string        `json:"url"             env:"URL"`
+	Host          string        `json:"host"            env:"HOST"`
+	Port          string        `json:"port"            env:"PORT"`
+	MaxReconnects int           `json:"max_reconnects"  env:"MAX_RECONNECTS"`
+	ReconnectWait time.Duration `json:"reconnect_wait"  env:"RECONNECT_WAIT"`
+	DrainTimeout  time.Duration `json:"drain_timeout"   env:"DRAIN_TIMEOUT"`
+	PingInterval  time.Duration `json:"ping_interval"   env:"PING_INTERVAL"`
+	MaxPingsOut   int           `json:"max_pings_out"   env:"MAX_PINGS_OUT"`
+	ClientName    string        `json:"client_name"     env:"CLIENT_NAME"`
+}
+
+// TimeoutConfig encapsulates SDK timeout values.
+type TimeoutConfig struct {
+	RequestTimeout time.Duration `json:"request_timeout" env:"REQUEST_TIMEOUT"`
+}
 
 // Config is the public SDK configuration users can construct or load from env.
 type Config struct {
-	NATS     internalconfig.NATSConfig    `json:"nats" envPrefix:"NATS_"`
-	Timeouts internalconfig.TimeoutConfig `json:"timeouts" envPrefix:"TIMEOUTS_"`
+	NATS     NATSConfig    `json:"nats" envPrefix:"NATS_"`
+	Timeouts TimeoutConfig `json:"timeouts" envPrefix:"TIMEOUTS_"`
 }
 
 // Load loads configuration from environment variables applying defaults.
 func Load() (*Config, error) {
 	cfg := Config{
-		NATS: internalconfig.NATSConfig{
-			Host:          internalconfig.DefaultNATSHost,
-			Port:          internalconfig.DefaultNATSPort,
-			MaxReconnects: internalconfig.DefaultMaxReconnects,
-			ReconnectWait: internalconfig.DefaultReconnectWait,
-			DrainTimeout:  internalconfig.DefaultDrainTimeout,
-			PingInterval:  internalconfig.DefaultPingInterval,
-			MaxPingsOut:   internalconfig.DefaultMaxPingsOut,
+		NATS: NATSConfig{
+			Host:          DefaultNATSHost,
+			Port:          DefaultNATSPort,
+			MaxReconnects: DefaultMaxReconnects,
+			ReconnectWait: DefaultReconnectWait,
+			DrainTimeout:  DefaultDrainTimeout,
+			PingInterval:  DefaultPingInterval,
+			MaxPingsOut:   DefaultMaxPingsOut,
 			ClientName:    "durablefuture-sdk",
 		},
-		Timeouts: internalconfig.TimeoutConfig{
-			RequestTimeout: internalconfig.DefaultRequestTimeout,
+		Timeouts: TimeoutConfig{
+			RequestTimeout: DefaultRequestTimeout,
 		},
 	}
 	if err := env.Parse(&cfg); err != nil {

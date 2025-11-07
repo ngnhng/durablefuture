@@ -22,7 +22,7 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/ngnhng/durablefuture/api"
 	"github.com/ngnhng/durablefuture/api/serde"
-	"github.com/ngnhng/durablefuture/pkg/client-sdk/internal/utils"
+	"github.com/ngnhng/durablefuture/sdk/internal/utils"
 )
 
 var _ Client = (*clientImpl)(nil)

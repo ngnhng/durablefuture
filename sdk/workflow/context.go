@@ -15,7 +15,7 @@
 package workflow
 
 import (
-	"github.com/ngnhng/durablefuture/pkg/client-sdk/internal"
+	"github.com/ngnhng/durablefuture/sdk/internal"
 )
 
 // Context is the interface for Workflow Operations.

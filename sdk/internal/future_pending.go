@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/ngnhng/durablefuture/pkg/client-sdk/internal/utils"
+	"github.com/ngnhng/durablefuture/sdk/internal/utils"
 )
 
 var _ Future = (*pending)(nil)

@@ -28,7 +28,7 @@ import (
 	"github.com/DeluxeOwl/chronicle/eventlog"
 	"github.com/ngnhng/durablefuture/api"
 	"github.com/ngnhng/durablefuture/api/serde"
-	"github.com/ngnhng/durablefuture/pkg/client-sdk/internal/utils"
+	"github.com/ngnhng/durablefuture/sdk/internal/utils"
 	"golang.org/x/sync/errgroup"
 )
 

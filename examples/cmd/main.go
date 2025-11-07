@@ -27,8 +27,8 @@ import (
 	"github.com/ngnhng/durablefuture/examples/scenarios"
 	_ "github.com/ngnhng/durablefuture/examples/scenarios/order"
 	_ "github.com/ngnhng/durablefuture/examples/scenarios/recovery"
-	clientpkg "github.com/ngnhng/durablefuture/pkg/client-sdk/client"
-	"github.com/ngnhng/durablefuture/pkg/client-sdk/worker"
+	clientpkg "github.com/ngnhng/durablefuture/sdk/client"
+	"github.com/ngnhng/durablefuture/sdk/worker"
 )
 
 func main() {

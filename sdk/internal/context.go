@@ -23,7 +23,7 @@ import (
 	"github.com/DeluxeOwl/chronicle/aggregate"
 	"github.com/ngnhng/durablefuture/api"
 	"github.com/ngnhng/durablefuture/api/serde"
-	"github.com/ngnhng/durablefuture/pkg/client-sdk/internal/utils"
+	"github.com/ngnhng/durablefuture/sdk/internal/utils"
 )
 
 type Context interface {

@@ -18,8 +18,8 @@ import (
 	"context"
 	"sort"
 
-	clientpkg "github.com/ngnhng/durablefuture/pkg/client-sdk/client"
-	"github.com/ngnhng/durablefuture/pkg/client-sdk/worker"
+	clientpkg "github.com/ngnhng/durablefuture/sdk/client"
+	"github.com/ngnhng/durablefuture/sdk/worker"
 )
 
 // Example describes an executable workflow scenario that can register workflows,
