@@ -51,6 +51,7 @@ const (
 	ManagerCommandProcessorsConsumer = "manager-command-processors"
 	WorkflowTaskProjectorConsumer    = "projector-workflow-tasks"
 	ActivityTaskProjectorConsumer    = "projector-activity-tasks"
+	ActivityRetryProjectorConsumer   = "projector-activity-retries"
 	WorkflowResultProjectorConsumer  = "projector-workflow-result"
 
 	WorkflowTaskWorkerConsumer = "worker-workflow-tasks"

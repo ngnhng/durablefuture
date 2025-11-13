@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
@@ -59,10 +60,15 @@ func ActivityTasks(ctx context.Context, conn *jetstreamx.Connection, conv serde.
 		switch e := event.(type) {
 		case *api.ActivityScheduled:
 			task := api.ActivityTask{
-				WorkflowFn: e.WorkflowFnName,
-				WorkflowID: string(e.ID),
-				ActivityFn: e.ActivityFnName,
-				Input:      e.Input,
+				WorkflowFn:               e.WorkflowFnName,
+				WorkflowID:               string(e.ID),
+				ActivityFn:               e.ActivityFnName,
+				Input:                    e.Input,
+				Attempt:                  1, // First attempt
+				ScheduleToCloseTimeoutMs: e.ScheduleToCloseTimeoutMs,
+				StartToCloseTimeoutMs:    e.StartToCloseTimeoutMs,
+				RetryPolicy:              e.RetryPolicy,
+				ScheduledAtMs:            time.Now().UnixMilli(),
 			}
 
 			// Use the provided BinarySerde instead of hardcoded JSON
@@ -92,6 +98,7 @@ func ActivityTasks(ctx context.Context, conn *jetstreamx.Connection, conv serde.
 				"activity_fn", e.ActivityFnName,
 				"subject", taskSubject,
 				"msg_id", msgID,
+				"attempt", 1,
 			)
 		default:
 			slog.Debug("PROJECTOR/ACT: ignoring history event", "type", fmt.Sprintf("%T", event))

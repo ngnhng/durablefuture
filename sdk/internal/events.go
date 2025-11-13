@@ -29,6 +29,7 @@ func (c *workflowContext) EventFuncs() event.FuncsFor[api.WorkflowEvent] {
 		func() api.WorkflowEvent { return new(api.ActivityStarted) },
 		func() api.WorkflowEvent { return new(api.ActivityCompleted) },
 		func() api.WorkflowEvent { return new(api.ActivityFailed) },
+		func() api.WorkflowEvent { return new(api.ActivityRetried) },
 		func() api.WorkflowEvent { return new(api.WorkflowFailed) },
 		func() api.WorkflowEvent { return new(api.WorkflowCompleted) },
 	}
@@ -65,6 +66,12 @@ func (c *workflowContext) Apply(e api.WorkflowEvent) error {
 		entry.history = append(entry.history, activityReplayRecord{
 			err: fmt.Errorf("%s", evt.Error),
 		})
+	case *api.ActivityRetried:
+		// ActivityRetried events don't affect replay state directly
+		// They are informational only - the retry projector will reschedule the activity
+		// During replay, we skip these events and wait for the final Completed/Failed event
+		c.id = evt.ID
+		c.workflowFunctionName = evt.WorkflowFnName
 	case *api.WorkflowFailed:
 		c.id = evt.ID
 		c.workflowFunctionName = evt.WorkflowFnName

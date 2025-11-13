@@ -94,22 +94,47 @@ type ShipResult struct {
 func OrderWorkflow(ctx workflow.Context, customerID string, productID string, amount float64, quantity int) (any, error) {
 	log.Println("order workflow started")
 
-	activityOptions := workflow.ActivityOptions{
-		StartToCloseTimeout: 10 * time.Second,
-		RetryPolicy:         nil,
-	}
-	ctx = workflow.WithActivityOptions(ctx, activityOptions)
+	// Configure retry policy for credit card charge activity
+	// This activity will be retried up to 3 times with exponential backoff
+	chargeActivityCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
+		ScheduleToCloseTimeout: 5 * time.Minute, // Total time budget across all retries
+		StartToCloseTimeout:    30 * time.Second, // Time per attempt
+		RetryPolicy: &workflow.RetryPolicy{
+			InitialInterval:    time.Second,     // Start with 1 second delay
+			BackoffCoefficient: 2.0,             // Double the delay each time
+			MaximumInterval:    30 * time.Second, // Cap backoff at 30 seconds
+			MaximumAttempts:    3,               // Try up to 3 times
+			NonRetryableErrorTypes: []string{
+				"invalid card",       // Don't retry if card is invalid
+				"insufficient funds", // Don't retry if no funds
+			},
+		},
+	})
 
 	var chargeResult ChargeResult
 	if err := workflow.
-		ExecuteActivity(ctx, ChargeCreditCardActivity, customerID, amount).
+		ExecuteActivity(chargeActivityCtx, ChargeCreditCardActivity, customerID, amount).
 		Get(ctx, &chargeResult); err != nil {
 		return nil, fmt.Errorf("credit card charge failed: %w", err)
 	}
 
+	// Configure retry policy for shipping activity
+	// Different policy: more attempts, longer timeout
+	shipActivityCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
+		ScheduleToCloseTimeout: 10 * time.Minute,
+		StartToCloseTimeout:    60 * time.Second,
+		RetryPolicy: &workflow.RetryPolicy{
+			InitialInterval:        2 * time.Second,
+			BackoffCoefficient:     1.5,
+			MaximumInterval:        time.Minute,
+			MaximumAttempts:        5,
+			NonRetryableErrorTypes: []string{"address invalid"},
+		},
+	})
+
 	var shipResult ShipResult
 	if err := workflow.
-		ExecuteActivity(ctx, ShipPackageActivity, chargeResult).
+		ExecuteActivity(shipActivityCtx, ShipPackageActivity, chargeResult).
 		Get(ctx, &shipResult); err != nil {
 		return nil, fmt.Errorf("package shipping failed: %w", err)
 	}

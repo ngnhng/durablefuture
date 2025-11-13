@@ -33,6 +33,7 @@ var _ WorkflowEvent = (*ActivityScheduled)(nil)
 var _ WorkflowEvent = (*ActivityStarted)(nil)
 var _ WorkflowEvent = (*ActivityCompleted)(nil)
 var _ WorkflowEvent = (*ActivityFailed)(nil)
+var _ WorkflowEvent = (*ActivityRetried)(nil)
 var _ WorkflowEvent = (*WorkflowFailed)(nil)
 var _ WorkflowEvent = (*WorkflowCompleted)(nil)
 
@@ -51,9 +52,12 @@ func (*WorkflowStarted) isWorkflowEvent()  {}
 type ActivityScheduled struct {
 	ID WorkflowID `json:"id"`
 
-	WorkflowFnName string `json:"wf_name"`
-	ActivityFnName string `json:"name"`
-	Input          []any  `json:"input"`
+	WorkflowFnName             string       `json:"wf_name"`
+	ActivityFnName             string       `json:"name"`
+	Input                      []any        `json:"input"`
+	ScheduleToCloseTimeoutMs   int64        `json:"schedule_to_close_timeout_ms,omitempty"`
+	StartToCloseTimeoutMs      int64        `json:"start_to_close_timeout_ms,omitempty"`
+	RetryPolicy                *RetryPolicy `json:"retry_policy,omitempty"`
 }
 
 func (*ActivityScheduled) EventName() string { return "activity/scheduled" }
@@ -93,6 +97,20 @@ type ActivityFailed struct {
 
 func (*ActivityFailed) EventName() string { return "activity/failed" }
 func (*ActivityFailed) isWorkflowEvent()  {}
+
+// -- Activity Retried Event --
+type ActivityRetried struct {
+	ID WorkflowID `json:"id"`
+
+	WorkflowFnName string `json:"wf_name"`
+	ActivityFnName string `json:"name"`
+	Attempt        int32  `json:"attempt"`
+	Error          string `json:"error"`
+	NextRetryDelay int64  `json:"next_retry_delay_ms"` // milliseconds
+}
+
+func (*ActivityRetried) EventName() string { return "activity/retried" }
+func (*ActivityRetried) isWorkflowEvent()  {}
 
 // -- Workflow Failed --
 type WorkflowFailed struct {

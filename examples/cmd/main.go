@@ -26,8 +26,9 @@ import (
 
 	"github.com/ngnhng/durablefuture/examples/scenarios"
 	_ "github.com/ngnhng/durablefuture/examples/scenarios/order"
+	_ "github.com/ngnhng/durablefuture/examples/scenarios/order-retries"
 	_ "github.com/ngnhng/durablefuture/examples/scenarios/recovery"
-	clientpkg "github.com/ngnhng/durablefuture/sdk/client"
+	"github.com/ngnhng/durablefuture/sdk/client"
 	"github.com/ngnhng/durablefuture/sdk/worker"
 )
 
@@ -56,7 +57,7 @@ func main() {
 	}
 	defer nc.Close()
 
-	workflowClient, err := clientpkg.NewClient(&clientpkg.Options{
+	workflowClient, err := client.NewClient(&client.Options{
 		Conn: nc,
 	})
 	if err != nil {
@@ -88,7 +89,7 @@ func main() {
 	}
 }
 
-func runWorkflowWorker(ctx context.Context, c clientpkg.Client, example scenarios.Example) error {
+func runWorkflowWorker(ctx context.Context, c client.Client, example scenarios.Example) error {
 	workerClient, err := worker.NewWorker(c, nil)
 	if err != nil {
 		return fmt.Errorf("error creating workflow worker: %w", err)
@@ -104,7 +105,7 @@ func runWorkflowWorker(ctx context.Context, c clientpkg.Client, example scenario
 	return nil
 }
 
-func runActivityWorker(ctx context.Context, c clientpkg.Client, example scenarios.Example) error {
+func runActivityWorker(ctx context.Context, c client.Client, example scenarios.Example) error {
 	workerClient, err := worker.NewWorker(c, nil)
 	if err != nil {
 		return fmt.Errorf("error creating activity worker: %w", err)

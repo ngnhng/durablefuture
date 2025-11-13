@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/ngnhng/durablefuture/examples/scenarios"
-	clientpkg "github.com/ngnhng/durablefuture/sdk/client"
+	"github.com/ngnhng/durablefuture/sdk/client"
 	"github.com/ngnhng/durablefuture/sdk/worker"
 	"github.com/ngnhng/durablefuture/sdk/workflow"
 )
@@ -50,7 +50,7 @@ func (Example) RegisterActivities(reg worker.ActivityRegistry) error {
 	return nil
 }
 
-func (Example) RunClient(ctx context.Context, c clientpkg.Client) error {
+func (Example) RunClient(ctx context.Context, c client.Client) error {
 	orderID := fmt.Sprintf("recovery-%d", time.Now().UnixNano())
 	future, err := c.ExecuteWorkflow(ctx, RecoverableOrderWorkflow,
 		orderID,

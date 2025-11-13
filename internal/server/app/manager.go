@@ -73,6 +73,11 @@ func (m *Manager) Run(ctx context.Context) error {
 	})
 
 	g.Go(func() error {
+		slog.Info("Starting Activity Retry Projector...")
+		return projection.ActivityRetries(gCtx, m.conn, m.serde)
+	})
+
+	g.Go(func() error {
 		slog.Info("Starting Workflow Result Projector...")
 		return projection.WorkflowResults(gCtx, m.conn, m.serde)
 	})

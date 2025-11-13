@@ -20,8 +20,11 @@ import (
 	"iter"
 	"log"
 	"log/slog"
+	"math"
 	"reflect"
+	"slices"
 	"strings"
+	"time"
 
 	"github.com/DeluxeOwl/chronicle"
 	"github.com/DeluxeOwl/chronicle/aggregate"
@@ -269,16 +272,39 @@ func (w *workerImpl) processActivityTask(wfctx *workflowContext, task *api.Activ
 
 	result, err := w.executeActivityFunc(wfctx, fn, task.Input)
 	if err != nil {
-		log.Printf("failed to execute %s with %s from activity registry", task.ActivityFn, task.Input)
+		log.Printf("Activity %s failed (attempt %d): %v", task.ActivityFn, task.Attempt, err)
 
+		// Check if we should retry based on the retry policy
+		if shouldRetry := w.evaluateRetryDecision(task, err); shouldRetry {
+			// Calculate next retry delay
+			nextDelay := w.calculateRetryDelay(task)
+
+			// Record retry event
+			wfctx.recordThat(&api.ActivityRetried{
+				ID:             api.WorkflowID(task.WorkflowID),
+				WorkflowFnName: task.WorkflowFn,
+				ActivityFnName: task.ActivityFn,
+				Attempt:        task.Attempt,
+				Error:          err.Error(),
+				NextRetryDelay: nextDelay.Milliseconds(),
+			})
+
+			log.Printf("Activity %s failed (attempt %d), will retry after %v", task.ActivityFn, task.Attempt, nextDelay)
+			return nil
+		}
+
+		// Not retrying, record final failure
 		wfctx.recordThat(&api.ActivityFailed{
 			ID:             api.WorkflowID(task.WorkflowID),
 			ActivityFnName: task.ActivityFn,
 			WorkflowFnName: task.WorkflowFn,
 			Error:          err.Error(),
 		})
+
+		return nil
 	}
 
+	// Success - record completion
 	wfctx.recordThat(&api.ActivityCompleted{
 		ID:             api.WorkflowID(task.WorkflowID),
 		WorkflowFnName: task.WorkflowFn,
@@ -287,7 +313,77 @@ func (w *workerImpl) processActivityTask(wfctx *workflowContext, task *api.Activ
 	})
 
 	return nil
+}
 
+// evaluateRetryDecision determines if an activity should be retried based on retry policy
+func (w *workerImpl) evaluateRetryDecision(task *api.ActivityTask, err error) bool {
+	// No retry policy means no retries
+	if task.RetryPolicy == nil {
+		return false
+	}
+
+	policy := task.RetryPolicy
+
+	// Check if max attempts exceeded
+	if policy.MaximumAttempts > 0 && task.Attempt >= policy.MaximumAttempts {
+		log.Printf("Max attempts (%d) reached for activity %s", policy.MaximumAttempts, task.ActivityFn)
+		return false
+	}
+
+	// Check if error is non-retryable
+	if len(policy.NonRetryableErrorTypes) > 0 && slices.Contains(policy.NonRetryableErrorTypes, err.Error()) {
+		log.Printf("Error '%s' is non-retryable for activity %s", err.Error(), task.ActivityFn)
+		return false
+	}
+
+	// Check if schedule-to-close timeout would be exceeded
+	if task.ScheduleToCloseTimeoutMs > 0 {
+		elapsedMs := time.Now().UnixMilli() - task.ScheduledAtMs
+		nextDelay := w.calculateRetryDelay(task)
+		if elapsedMs+nextDelay.Milliseconds() > task.ScheduleToCloseTimeoutMs {
+			log.Printf("ScheduleToCloseTimeout would be exceeded for activity %s", task.ActivityFn)
+			return false
+		}
+	}
+
+	return true
+}
+
+// calculateRetryDelay calculates the backoff delay for the next retry attempt
+func (w *workerImpl) calculateRetryDelay(task *api.ActivityTask) time.Duration {
+	if task.RetryPolicy == nil {
+		return time.Second // Default 1 second
+	}
+
+	policy := task.RetryPolicy
+
+	// Set defaults
+	initialInterval := time.Duration(policy.InitialIntervalMs) * time.Millisecond
+	if initialInterval == 0 {
+		initialInterval = time.Second
+	}
+
+	backoffCoefficient := policy.BackoffCoefficient
+	if backoffCoefficient <= 0 {
+		backoffCoefficient = 2.0
+	}
+
+	maxInterval := time.Duration(policy.MaximumIntervalMs) * time.Millisecond
+	if maxInterval == 0 {
+		maxInterval = 100 * initialInterval
+	}
+
+	// Calculate exponential backoff: initialInterval * (backoffCoefficient ^ (attempt - 1))
+	nextDelay := time.Duration(
+		float64(initialInterval) * math.Pow(backoffCoefficient, float64(task.Attempt-1)),
+	)
+
+	// Cap at maximum interval
+	if nextDelay > maxInterval {
+		nextDelay = maxInterval
+	}
+
+	return nextDelay
 }
 
 func (w *workerImpl) processWorkflowTask(wfctx *workflowContext, task *api.WorkflowTask) error {
@@ -395,6 +491,16 @@ func (w *workerImpl) executeActivityFunc(ctx context.Context, fn any, inputs []a
 	}
 
 	rawResults := fnv.Call(callArgs)
+
+	// Check if the last return value is an error
+	if len(rawResults) > 0 {
+		lastResult := rawResults[len(rawResults)-1]
+		if lastResult.Type().Implements(reflect.TypeOf((*error)(nil)).Elem()) {
+			if !lastResult.IsNil() {
+				err = lastResult.Interface().(error)
+			}
+		}
+	}
 
 	return rawResults, err
 }

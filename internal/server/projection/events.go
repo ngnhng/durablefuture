@@ -29,8 +29,9 @@ var workflowEventFactories = map[string]func() api.WorkflowEvent{
 	(&api.ActivityCompleted{}).EventName(): func() api.WorkflowEvent {
 		return &api.ActivityCompleted{}
 	},
-	(&api.ActivityFailed{}).EventName(): func() api.WorkflowEvent { return &api.ActivityFailed{} },
-	(&api.WorkflowFailed{}).EventName(): func() api.WorkflowEvent { return &api.WorkflowFailed{} },
+	(&api.ActivityFailed{}).EventName():  func() api.WorkflowEvent { return &api.ActivityFailed{} },
+	(&api.ActivityRetried{}).EventName(): func() api.WorkflowEvent { return &api.ActivityRetried{} },
+	(&api.WorkflowFailed{}).EventName():  func() api.WorkflowEvent { return &api.WorkflowFailed{} },
 	(&api.WorkflowCompleted{}).EventName(): func() api.WorkflowEvent {
 		return &api.WorkflowCompleted{}
 	},
@@ -76,6 +77,8 @@ func inferWorkflowEventType(payload []byte, conv serde.BinarySerde) (string, err
 		switch {
 		case hasKey(raw, "result"):
 			return (&api.ActivityCompleted{}).EventName(), nil
+		case hasKey(raw, "error") && hasKey(raw, "attempt"):
+			return (&api.ActivityRetried{}).EventName(), nil
 		case hasKey(raw, "error"):
 			return (&api.ActivityFailed{}).EventName(), nil
 		case hasKey(raw, "input"):
