@@ -15,11 +15,11 @@
 package projection
 
 import (
-	"encoding/json"
 	"fmt"
 
 	"github.com/nats-io/nats.go/jetstream"
 	"github.com/ngnhng/durablefuture/api"
+	"github.com/ngnhng/durablefuture/api/serde"
 )
 
 var workflowEventFactories = map[string]func() api.WorkflowEvent{
@@ -36,7 +36,7 @@ var workflowEventFactories = map[string]func() api.WorkflowEvent{
 	},
 }
 
-func decodeWorkflowEvent(msg jetstream.Msg) (api.WorkflowEvent, error) {
+func decodeWorkflowEvent(msg jetstream.Msg, conv serde.BinarySerde) (api.WorkflowEvent, error) {
 	payload := msg.Data()
 	if len(payload) == 0 {
 		return nil, fmt.Errorf("empty workflow event payload")
@@ -45,7 +45,7 @@ func decodeWorkflowEvent(msg jetstream.Msg) (api.WorkflowEvent, error) {
 	eventType := msg.Headers().Get(api.ChronicleEventNameHeader)
 	if eventType == "" {
 		var err error
-		eventType, err = inferWorkflowEventType(payload)
+		eventType, err = inferWorkflowEventType(payload, conv)
 		if err != nil {
 			return nil, err
 		}
@@ -57,16 +57,18 @@ func decodeWorkflowEvent(msg jetstream.Msg) (api.WorkflowEvent, error) {
 	}
 
 	event := factory()
-	if err := json.Unmarshal(payload, event); err != nil {
+	// Use the configured serializer instead of hardcoded JSON
+	if err := conv.DeserializeBinary(payload, event); err != nil {
 		return nil, fmt.Errorf("decode workflow event (%s): %w", eventType, err)
 	}
 
 	return event, nil
 }
 
-func inferWorkflowEventType(payload []byte) (string, error) {
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(payload, &raw); err != nil {
+func inferWorkflowEventType(payload []byte, conv serde.BinarySerde) (string, error) {
+	// Deserialize to a generic map to inspect fields
+	var raw map[string]any
+	if err := conv.DeserializeBinary(payload, &raw); err != nil {
 		return "", fmt.Errorf("infer workflow event type: %w", err)
 	}
 
@@ -95,7 +97,7 @@ func inferWorkflowEventType(payload []byte) (string, error) {
 	}
 }
 
-func hasKey(m map[string]json.RawMessage, key string) bool {
+func hasKey(m map[string]any, key string) bool {
 	_, ok := m[key]
 	return ok
 }

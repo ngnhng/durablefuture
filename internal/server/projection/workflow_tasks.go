@@ -16,7 +16,6 @@ package projection
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -30,7 +29,7 @@ import (
 )
 
 // WorkflowTasks creates workflow tasks based on history events.
-func WorkflowTasks(ctx context.Context, conn *jetstreamx.Connection, _ serde.BinarySerde) error {
+func WorkflowTasks(ctx context.Context, conn *jetstreamx.Connection, conv serde.BinarySerde) error {
 	js, _ := conn.JS()
 
 	consumer, err := conn.EnsureConsumer(ctx, constant.WorkflowHistoryStream, jetstream.ConsumerConfig{
@@ -44,7 +43,7 @@ func WorkflowTasks(ctx context.Context, conn *jetstreamx.Connection, _ serde.Bin
 	}
 
 	cc, err := consumer.Consume(func(msg jetstream.Msg) {
-		event, err := decodeWorkflowEvent(msg)
+		event, err := decodeWorkflowEvent(msg, conv)
 		if err != nil {
 			slog.Info(fmt.Sprintf("PROJECTOR/WF: could not decode event, terminating: %v", err))
 			msg.Term()
@@ -72,7 +71,7 @@ func WorkflowTasks(ctx context.Context, conn *jetstreamx.Connection, _ serde.Bin
 		case *api.ActivityCompleted:
 			shouldCreateTask = true
 			workflowFnName = e.WorkflowFnName
-			inputArgs, err = loadWorkflowInputArgs(ctx, js, workflowFnName)
+			inputArgs, err = loadWorkflowInputArgs(ctx, js, conv, workflowFnName)
 			if err != nil {
 				slog.Info(fmt.Sprintf("PROJECTOR/WF: %v", err))
 				msg.Term()
@@ -83,7 +82,7 @@ func WorkflowTasks(ctx context.Context, conn *jetstreamx.Connection, _ serde.Bin
 			slog.Info(fmt.Sprintf("PROJECTOR/WF: got ActivityFailed event: %v", event))
 			shouldCreateTask = true
 			workflowFnName = e.WorkflowFnName
-			inputArgs, err = loadWorkflowInputArgs(ctx, js, workflowFnName)
+			inputArgs, err = loadWorkflowInputArgs(ctx, js, conv, workflowFnName)
 			if err != nil {
 				slog.Info(fmt.Sprintf("PROJECTOR/WF: %v", err))
 				msg.Term()
@@ -108,10 +107,17 @@ func WorkflowTasks(ctx context.Context, conn *jetstreamx.Connection, _ serde.Bin
 				WorkflowFn: workflowFnName,
 				Input:      inputArgs,
 			}
-			taskData, _ := json.Marshal(task)
+
+			// Use the provided BinarySerde instead of hardcoded JSON
+			taskData, err := conv.SerializeBinary(task)
+			if err != nil {
+				slog.Info(fmt.Sprintf("PROJECTOR/WF: failed to serialize task: %v", err))
+				msg.Nak()
+				return
+			}
 
 			taskSubject := fmt.Sprintf("workflow.%s.tasks", workflowID)
-			_, err := js.PublishMsg(
+			_, err = js.PublishMsg(
 				ctx,
 				&nats.Msg{
 					Subject: taskSubject,
@@ -140,7 +146,7 @@ func WorkflowTasks(ctx context.Context, conn *jetstreamx.Connection, _ serde.Bin
 	return nil
 }
 
-func loadWorkflowInputArgs(ctx context.Context, js jetstream.JetStream, workflowFnName string) ([]any, error) {
+func loadWorkflowInputArgs(ctx context.Context, js jetstream.JetStream, conv serde.BinarySerde, workflowFnName string) ([]any, error) {
 	kv, err := js.KeyValue(ctx, constant.WorkflowInputBucket)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get KV store: %w", err)
@@ -152,8 +158,8 @@ func loadWorkflowInputArgs(ctx context.Context, js jetstream.JetStream, workflow
 	}
 
 	var inputArgs []any
-	if err := json.Unmarshal(kvEntry.Value(), &inputArgs); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal input args from KV: %w", err)
+	if err := conv.DeserializeBinary(kvEntry.Value(), &inputArgs); err != nil {
+		return nil, fmt.Errorf("failed to deserialize input args from KV: %w", err)
 	}
 	return inputArgs, nil
 }

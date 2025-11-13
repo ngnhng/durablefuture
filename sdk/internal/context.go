@@ -95,9 +95,9 @@ func (c *workflowContext) ExecuteActivity(activityFn any, args ...any) Future {
 		record := entry.history[entry.consumed]
 		entry.consumed++
 		if record.err != nil {
-			return &pending{isResolved: true, err: record.err}
+			return &pending{isResolved: true, err: record.err, converter: c.converter}
 		}
-		return &pending{isResolved: true, value: record.result}
+		return &pending{isResolved: true, value: record.result, converter: c.converter}
 	}
 
 	// No cached history entry means this is a fresh execution.
@@ -116,7 +116,7 @@ func (c *workflowContext) ExecuteActivity(activityFn any, args ...any) Future {
 		panic(fmt.Errorf("record activity scheduled event: %w", err))
 	}
 
-	return &pending{isResolved: false}
+	return &pending{isResolved: false, converter: c.converter}
 }
 
 // func getActivityOptions(ctx *ContextImpl) workflow.ActivityOptions {

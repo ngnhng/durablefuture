@@ -16,10 +16,10 @@ package internal
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 
+	"github.com/ngnhng/durablefuture/api/serde"
 	"github.com/ngnhng/durablefuture/sdk/internal/utils"
 )
 
@@ -34,6 +34,7 @@ type pending struct {
 	isResolved bool
 	value      []any
 	err        error
+	converter  serde.BinarySerde // for serialization-agnostic type conversion
 }
 
 func (f *pending) Get(ctx context.Context, resultPtr any) error {
@@ -61,14 +62,26 @@ func (f *pending) Get(ctx context.Context, resultPtr any) error {
 			return fmt.Errorf("[Activity Get] workflow execution failed: %v", f.value[1])
 		}
 
-		// No error, unmarshal the result part (first element) into valuePtr
+		// No error, convert the result part (first element) into valuePtr
 		if f.value[0] != nil {
-			// Convert the result part back to JSON and then unmarshal into valuePtr
-			resultJSON, err := json.Marshal(f.value[0])
-			if err != nil {
-				return err
+			// Use serialization-agnostic type conversion
+			// This works regardless of the underlying serializer (JSON, msgpack, protobuf)
+			if f.converter == nil {
+				return fmt.Errorf("no converter available for type conversion")
 			}
-			return json.Unmarshal(resultJSON, resultPtr)
+
+			// Serialize the value using the configured serializer
+			resultBytes, err := f.converter.SerializeBinary(f.value[0])
+			if err != nil {
+				return fmt.Errorf("failed to serialize result value: %w", err)
+			}
+
+			// Deserialize into the target type
+			if err := f.converter.DeserializeBinary(resultBytes, resultPtr); err != nil {
+				return fmt.Errorf("failed to deserialize result into target type: %w", err)
+			}
+
+			return nil
 		}
 
 	}

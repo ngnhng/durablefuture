@@ -115,6 +115,7 @@ func OrderWorkflow(ctx workflow.Context, customerID string, productID string, am
 	}
 
 	result := map[string]any{
+		"charged_amount":     chargeResult.Amount,
 		"tracking_id":        shipResult.TrackingID,
 		"carrier":            shipResult.Carrier,
 		"estimated_delivery": shipResult.EstimatedDelivery,

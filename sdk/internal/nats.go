@@ -91,7 +91,7 @@ func from(nc *nats.Conn, namespace string, conv serde.BinarySerde) (*Conn, error
 	}
 	namespace = strings.TrimSpace(namespace)
 	if conv == nil {
-		conv = &serde.JsonSerde{}
+		conv = &serde.MsgpackSerde{} // Default to MessagePack for better performance
 	}
 	return &Conn{
 		nc:                nc,

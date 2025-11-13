@@ -38,7 +38,7 @@ func WorkflowResults(ctx context.Context, conn *jetstreamx.Connection, conv serd
 	}
 
 	cc, err := consumer.Consume(func(msg jetstream.Msg) {
-		event, err := decodeWorkflowEvent(msg)
+		event, err := decodeWorkflowEvent(msg, conv)
 		if err != nil {
 			slog.Info(fmt.Sprintf("PROJECTOR/WF_RESULT: could not decode event, terminating: %v", err))
 			msg.Term()

@@ -35,7 +35,6 @@ type (
 	Client interface {
 		// ExecuteWorkflow starts a workflow execution.
 		ExecuteWorkflow(ctx context.Context, workflowFn any, input ...any) (Future, error)
-
 		// Accessors to underlying components, not exposed for public consumption
 		getConn() *Conn
 		getSerde() serde.BinarySerde
@@ -67,7 +66,7 @@ func NewClient(options *ClientOptions) (Client, error) {
 
 	return &clientImpl{
 		WorkflowExecutor: conn,
-		converter:        &serde.JsonSerde{},
+		converter:        &serde.MsgpackSerde{}, // Use MessagePack for better performance
 		options:          options,
 		nc:               conn,
 	}, nil
@@ -88,32 +87,6 @@ func (c *clientImpl) ExecuteWorkflow(ctx context.Context, workflowFn any, input 
 	}
 
 	reply, err := c.StartWorkflow(ctx, attrs)
-
-	// commandData, err := c.converter.SerializeBinary(startWorkflowCommand)
-	// if err != nil {
-	// 	return nil, fmt.Errorf("failed to serialize start workflow command: %w", err)
-	// }
-
-	// // Use configured request timeout; fall back to 10s if zero (defensive)
-	// timeout := c.cfg.Timeouts.RequestTimeout
-	// reqCtx, cancel := context.WithTimeout(ctx, timeout)
-	// defer cancel()
-
-	// log.Printf("request: %v", startWorkflowCommand)
-	// reply, err := c.conn.NATS().RequestWithContext(reqCtx, api.CommandRequestStart, commandData)
-	// if err != nil {
-	// 	log.Printf("err: %v", err)
-	// 	if errors.Is(err, nats.ErrNoResponders) {
-	// 		return nil, fmt.Errorf("no managers available to start workflow: %w", err)
-	// 	}
-	// 	return nil, fmt.Errorf("failed to send start workflow request: %w", err)
-	// }
-
-	// err = c.converter.DeserializeBinary(reply.Data, &parsedReply)
-	// if err != nil {
-	// 	log.Printf("err: %v", err)
-	// 	return nil, fmt.Errorf("failed to parse reply of start workflow request: %w", err)
-	// }
 
 	if reply.Error != "" {
 		return nil, fmt.Errorf("starting workflow failed on server: %s", reply.Error)

@@ -16,7 +16,6 @@ package projection
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -29,7 +28,7 @@ import (
 )
 
 // ActivityTasks creates activity tasks based on workflow history events.
-func ActivityTasks(ctx context.Context, conn *jetstreamx.Connection, _ serde.BinarySerde) error {
+func ActivityTasks(ctx context.Context, conn *jetstreamx.Connection, conv serde.BinarySerde) error {
 	js, _ := conn.JS()
 
 	consumer, err := conn.EnsureConsumer(ctx, api.WorkflowHistoryStream, jetstream.ConsumerConfig{
@@ -43,7 +42,7 @@ func ActivityTasks(ctx context.Context, conn *jetstreamx.Connection, _ serde.Bin
 	}
 
 	cc, err := consumer.Consume(func(msg jetstream.Msg) {
-		event, err := decodeWorkflowEvent(msg)
+		event, err := decodeWorkflowEvent(msg, conv)
 		if err != nil {
 			slog.Info(fmt.Sprintf("PROJECTOR/ACT: could not decode event, terminating: %v", err))
 			msg.Term()
@@ -66,9 +65,10 @@ func ActivityTasks(ctx context.Context, conn *jetstreamx.Connection, _ serde.Bin
 				Input:      e.Input,
 			}
 
-			taskData, err := json.Marshal(task)
+			// Use the provided BinarySerde instead of hardcoded JSON
+			taskData, err := conv.SerializeBinary(task)
 			if err != nil {
-				slog.Info(fmt.Sprintf("PROJECTOR/ACT: failed to marshal task payload: %v", err))
+				slog.Info(fmt.Sprintf("PROJECTOR/ACT: failed to serialize task payload: %v", err))
 				msg.Term()
 				return
 			}

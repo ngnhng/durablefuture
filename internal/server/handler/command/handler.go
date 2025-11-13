@@ -16,7 +16,6 @@ package command
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strconv"
@@ -41,6 +40,21 @@ func NewHandler(conn *jetstreamx.Connection, conv serde.BinarySerde) *Handler {
 	}
 }
 
+// sendErrorReply sends an error reply using the configured serializer
+func (h *Handler) sendErrorReply(msg *nats.Msg, workflowID, errorMsg string) {
+	reply, err := h.conv.SerializeBinary(api.StartWorkflowReply{
+		WorkflowID: workflowID,
+		Error:      errorMsg,
+	})
+	if err != nil {
+		// If serialization fails, send a minimal JSON response as last resort
+		fallback := fmt.Sprintf(`{"error":"serialization failed: %s","workflow_id":""}`, err.Error())
+		msg.Respond([]byte(fallback))
+		return
+	}
+	msg.Respond(reply)
+}
+
 func (h *Handler) HandleRequest(msg *nats.Msg) {
 	slog.Debug(fmt.Sprintf("HANDLER ENTRY: Subject=%s, Reply=%s", msg.Subject, msg.Reply))
 
@@ -54,9 +68,8 @@ func (h *Handler) HandleRequest(msg *nats.Msg) {
 	}()
 
 	var cmd api.Command
-	err := json.Unmarshal(msg.Data, &cmd)
-	if err != nil {
-		slog.Error("unmarshal error", "error", err)
+	if err := h.conv.DeserializeBinary(msg.Data, &cmd); err != nil {
+		slog.Error("failed to deserialize command", "error", err)
 		msg.Term()
 		return
 	}
@@ -67,12 +80,7 @@ func (h *Handler) HandleRequest(msg *nats.Msg) {
 			var data api.StartWorkflowAttributes
 			if err := h.conv.DeserializeBinary(cmd.Attributes, &data); err != nil {
 				slog.Debug(fmt.Sprintf("failed to unmarshal start workflow attributes: %v", err))
-				reply, _ := json.Marshal(api.StartWorkflowReply{
-					WorkflowID: "",
-					Error:      "failed to parse request attributes: " + err.Error()})
-
-				slog.Debug(fmt.Sprintf("publishing error reply for unmarshal failure: %v", string(reply)))
-				msg.Respond(reply)
+				h.sendErrorReply(msg, "", "failed to parse request attributes: "+err.Error())
 				return
 			}
 			slog.Debug(fmt.Sprintf("request data: %v", data))
@@ -90,12 +98,7 @@ func (h *Handler) HandleRequest(msg *nats.Msg) {
 			js, err := h.conn.JS()
 			if err != nil {
 				slog.Debug(fmt.Sprintf("failed to get JetStream context: %v", err))
-				reply, _ := json.Marshal(api.StartWorkflowReply{
-					WorkflowID: "",
-					Error:      "internal server error: failed to get JetStream context: " + err.Error()})
-
-				slog.Debug(fmt.Sprintf("publishing error reply: %v", string(reply)))
-				msg.Respond(reply)
+				h.sendErrorReply(msg, "", "internal server error: failed to get JetStream context: "+err.Error())
 				return
 			}
 
@@ -113,30 +116,21 @@ func (h *Handler) HandleRequest(msg *nats.Msg) {
 			kv, err := js.KeyValue(context.Background(), constant.WorkflowInputBucket)
 			if err != nil {
 				slog.Debug(fmt.Sprintf("failed to get KV store: %v", err))
-				reply, _ := json.Marshal(api.StartWorkflowReply{
-					WorkflowID: "",
-					Error:      "internal server error: failed to get KV store: " + err.Error()})
-				msg.Respond(reply)
+				h.sendErrorReply(msg, "", "internal server error: failed to get KV store: "+err.Error())
 				return
 			}
 
 			inputArgsData, err := h.conv.SerializeBinary(data.Input)
 			if err != nil {
 				slog.Debug(fmt.Sprintf("failed to serialize input args: %v", err))
-				reply, _ := json.Marshal(api.StartWorkflowReply{
-					WorkflowID: "",
-					Error:      "internal server error: failed to serialize input args: " + err.Error()})
-				msg.Respond(reply)
+				h.sendErrorReply(msg, "", "internal server error: failed to serialize input args: "+err.Error())
 				return
 			}
 
 			_, err = kv.Put(context.Background(), data.WorkflowFnName, inputArgsData)
 			if err != nil {
 				slog.Debug(fmt.Sprintf("failed to store input args in KV: %v", err))
-				reply, _ := json.Marshal(api.StartWorkflowReply{
-					WorkflowID: "",
-					Error:      "internal server error: failed to store input args: " + err.Error()})
-				msg.Respond(reply)
+				h.sendErrorReply(msg, "", "internal server error: failed to store input args: "+err.Error())
 				return
 			}
 			slog.Debug(fmt.Sprintf("stored input args in KV for workflow function: %s", data.WorkflowFnName))
@@ -154,11 +148,7 @@ func (h *Handler) HandleRequest(msg *nats.Msg) {
 			_, err = js.PublishMsg(context.Background(), startEventMsg)
 			if err != nil {
 				slog.Debug(fmt.Sprintf("error: %v", err))
-				reply, _ := json.Marshal(api.StartWorkflowReply{
-					Error: "internal server error: " + err.Error()})
-
-				slog.Debug(fmt.Sprintf("publishing reply: %v", string(reply)))
-				msg.Respond(reply)
+				h.sendErrorReply(msg, "", "internal server error: "+err.Error())
 				return
 			}
 			slog.Debug(fmt.Sprintf("published to history: %v", event))

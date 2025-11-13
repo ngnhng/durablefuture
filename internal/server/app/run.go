@@ -60,7 +60,8 @@ func Run(ctx context.Context, opts Options) error {
 		}
 	}()
 
-	mgr, err := NewManager(ctx, cfg, &serde.JsonSerde{})
+	// Use MessagePack for better performance and type preservation
+	mgr, err := NewManager(ctx, cfg, &serde.MsgpackSerde{})
 	if err != nil {
 		return err
 	}
