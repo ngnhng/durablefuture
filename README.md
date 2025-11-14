@@ -45,65 +45,10 @@ export EXAMPLE_SCENARIO=order-recovery
 `EXAMPLE_SCENARIO` is read by Docker Compose so the workflow and activity worker containers auto-load the correct workflows/activities.
 
 ```bash
-docker compose up --force-recreate --build -d nats server workflow-worker activity-worker
+docker compose up --force-recreate --build -d
 ```
 
-### 3. Run the client locally
-
-```bash
-go run ./examples/cmd -example=${EXAMPLE_SCENARIO}
-```
-
-Change `EXAMPLE_SCENARIO` (for example `order`) and rerun the same commands to try a different demo.
-
-### 4. Visualize the flow (order example)
-
-The order scenario wires every component together:
-
-1. The CLI client (`examples/cmd`) calls `ExecuteWorkflow(OrderWorkflow, ...)` which sends `command.request.start` to the server (`sdk/internal/workflow_starter.go`).
-2. The command handler (`internal/server/handler/command`) creates a workflow ID, stores the input arguments in the `workflow-input` KV bucket, and appends a `WorkflowStarted` event to `history.<workflowID>`.
-3. `projection.WorkflowTasks` listens to the history stream and, upon `WorkflowStarted` (or later `ActivityCompleted`/`ActivityFailed`) events, publishes workflow tasks to the `WORKFLOW_TASKS` stream (`workflow.<id>.tasks`).
-4. A workflow worker (`sdk/internal/worker`) consumes the task, replays history with Chronicle, and begins running `OrderWorkflow` from `examples/scenarios/order/order.go`.
-5. Each `ExecuteActivity` call (first `ChargeCreditCardActivity`, then `ShipPackageActivity`) records an `ActivityScheduled` event which `projection.ActivityTasks` turns into activity tasks in the `ACTIVITY_TASKS` stream.
-6. Activity workers pick up those tasks, execute the Go functions (`order.go`), and record `ActivityCompleted` or `ActivityFailed` events back to the history stream.
-7. Completion/failure events trigger another workflow task so the workflow worker can resume deterministically and either move to the next step or re-evaluate the failure path.
-8. When `OrderWorkflow` finishes, it records a `WorkflowCompleted` event; `projection.WorkflowResults` writes the serialized result to the `workflow-result` KV bucket under the workflow ID.
-9. The client-side future watches that bucket (`sdk/internal/result_watcher.go`) and returns the result once the key is populated.
-
-```mermaid
-sequenceDiagram
-    autonumber
-    participant Client
-    participant Manager as Server Command Handler
-    participant History as history.<workflowId>
-    participant WFProj as Workflow Task Projector
-    participant WFWorker as Workflow Worker
-    participant ActProj as Activity Task Projector
-    participant ActWorker as Activity Worker
-    participant ResultKV as workflow-result KV
-
-    Client->>Manager: ExecuteWorkflow(OrderWorkflow,...)
-    Manager->>History: Append WorkflowStarted + store args in workflow-input
-    Manager-->>Client: WorkflowID
-
-    History-->>WFProj: WorkflowStarted event
-    WFProj->>WFWorker: Publish initial WorkflowTask
-    WFWorker->>History: ActivityScheduled(ChargeCreditCard)
-    History-->>ActProj: ActivityScheduled
-    ActProj->>ActWorker: Publish ActivityTask(ChargeCreditCard)
-    ActWorker->>History: ActivityCompleted(charge)
-
-    History-->>WFProj: ActivityCompleted
-    WFProj->>WFWorker: Publish WorkflowTask (resume)
-    WFWorker->>History: ActivityScheduled(ShipPackage)
-    History-->>ActProj: ActivityScheduled
-    ActProj->>ActWorker: Publish ActivityTask(ShipPackage)
-    ActWorker->>History: ActivityCompleted(shipping)
-
-    WFWorker->>History: WorkflowCompleted(result)
-    History-->>ResultKV: WorkflowCompleted -> set workflow-result/<id>
-    ResultKV-->>Client: Watch result and return to caller
-```
+### 3. Visit the UI at [http://localhost:8080](http://localhost:8080)
 
 ## Usage
 

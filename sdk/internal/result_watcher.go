@@ -17,7 +17,6 @@ package internal
 import (
 	"context"
 	"fmt"
-	"log"
 
 	"github.com/nats-io/nats.go/jetstream"
 	"github.com/ngnhng/durablefuture/api"
@@ -30,7 +29,7 @@ func (c *Conn) Watch(ctx context.Context, workflowID string) ([]byte, error) {
 		return nil, fmt.Errorf("could not start KV watcher for key '%s': %w", workflowID, err)
 	}
 	defer watcher.Stop()
-	log.Printf("Watching for result of workflow: %s", workflowID)
+	c.Logger().Info("watching for workflow result", "workflow_id", workflowID)
 
 	// Wait for the first update or context cancellation.
 	for update := range watcher.Updates() {
@@ -40,7 +39,7 @@ func (c *Conn) Watch(ctx context.Context, workflowID string) ([]byte, error) {
 		}
 
 		if update.Operation() == jetstream.KeyValuePut {
-			log.Printf("Received result for workflow %s", workflowID)
+			c.Logger().Info("received workflow result", "workflow_id", workflowID)
 			return update.Value(), nil
 		}
 	}

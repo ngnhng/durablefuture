@@ -53,12 +53,20 @@ type WorkflowState struct {
 }
 
 type StepDetail struct {
-	Name      string     `json:"name"`
-	Status    string     `json:"status"` // "pending", "running", "completed", "failed"
-	Attempts  int        `json:"attempts"`
-	StartedAt *time.Time `json:"started_at,omitempty"`
-	EndedAt   *time.Time `json:"ended_at,omitempty"`
-	Error     string     `json:"error,omitempty"`
+	Name         string         `json:"name"`
+	Status       string         `json:"status"` // "pending", "running", "completed", "failed"
+	Attempts     int            `json:"attempts"`
+	StartedAt    *time.Time     `json:"started_at,omitempty"`
+	EndedAt      *time.Time     `json:"ended_at,omitempty"`
+	Error        string         `json:"error,omitempty"`
+	RetryHistory []RetryAttempt `json:"retry_history,omitempty"`
+}
+
+type RetryAttempt struct {
+	Attempt        int       `json:"attempt"`
+	Error          string    `json:"error,omitempty"`
+	NextRetryDelay int64     `json:"next_retry_delay_ms,omitempty"`
+	RecordedAt     time.Time `json:"recorded_at"`
 }
 
 func NewDemoHandler(conn *jetstreamx.Connection, serde serde.BinarySerde) *DemoHandler {
@@ -183,6 +191,9 @@ func (h *DemoHandler) handleEvent(msg jetstream.Msg) {
 			state.StepDetails[stepIdx].Attempts++
 			state.StepDetails[stepIdx].StartedAt = &now
 			state.CurrentStep = stepIdx + 1
+			if state.StepDetails[stepIdx].Attempts == 0 {
+				state.StepDetails[stepIdx].Attempts = 1
+			}
 		}
 
 	case "activity/completed":
@@ -196,6 +207,9 @@ func (h *DemoHandler) handleEvent(msg jetstream.Msg) {
 			now := time.Now()
 			state.StepDetails[stepIdx].Status = "completed"
 			state.StepDetails[stepIdx].EndedAt = &now
+			if len(state.StepDetails[stepIdx].RetryHistory) > 0 {
+				state.StepDetails[stepIdx].Attempts = len(state.StepDetails[stepIdx].RetryHistory) + 1
+			}
 		}
 
 	case "activity/failed":
@@ -209,6 +223,9 @@ func (h *DemoHandler) handleEvent(msg jetstream.Msg) {
 			state.StepDetails[stepIdx].Status = "failed"
 			state.StepDetails[stepIdx].Error = evt.Error
 			// Don't set EndedAt - it might retry
+			if current := len(state.StepDetails[stepIdx].RetryHistory) + 1; current > state.StepDetails[stepIdx].Attempts {
+				state.StepDetails[stepIdx].Attempts = current
+			}
 		}
 
 	case "activity/retried":
@@ -219,8 +236,19 @@ func (h *DemoHandler) handleEvent(msg jetstream.Msg) {
 
 		stepIdx := h.findStepByName(state, evt.ActivityFnName)
 		if stepIdx >= 0 {
-			state.StepDetails[stepIdx].Status = "running"
-			state.StepDetails[stepIdx].Error = ""
+			step := &state.StepDetails[stepIdx]
+			step.Status = "running"
+			step.Error = ""
+			now := time.Now()
+			step.RetryHistory = append(step.RetryHistory, RetryAttempt{
+				Attempt:        int(evt.Attempt),
+				Error:          evt.Error,
+				NextRetryDelay: evt.NextRetryDelay,
+				RecordedAt:     now,
+			})
+			if len(step.RetryHistory)+1 > step.Attempts {
+				step.Attempts = len(step.RetryHistory) + 1
+			}
 		}
 
 	case "workflow/completed":

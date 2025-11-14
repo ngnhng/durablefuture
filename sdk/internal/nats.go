@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -81,6 +82,7 @@ type Conn struct {
 	converter serde.BinarySerde
 
 	IdentifierManager
+	logger *slog.Logger
 }
 
 func from(nc *nats.Conn, namespace string, conv serde.BinarySerde) (*Conn, error) {
@@ -105,6 +107,17 @@ func (c *Conn) Close() {
 	if c.nc != nil && !c.nc.IsClosed() {
 		c.nc.Close()
 	}
+}
+
+func (c *Conn) SetLogger(l *slog.Logger) {
+	c.logger = defaultLogger(l)
+}
+
+func (c *Conn) Logger() *slog.Logger {
+	if c == nil {
+		return slog.Default()
+	}
+	return defaultLogger(c.logger)
 }
 
 // JS returns the JetStream context associated with the NATS connection.

@@ -18,7 +18,6 @@ import (
 	"context"
 	"fmt"
 	"iter"
-	"log"
 	"log/slog"
 	"math"
 	"reflect"
@@ -50,6 +49,7 @@ type (
 	WorkerOptions struct {
 		TenantID  string
 		Namespace string
+		Logger    *slog.Logger
 	}
 
 	ActivityRegisterOption struct{}
@@ -76,12 +76,19 @@ type workerImpl struct {
 	activityRegistry registry
 
 	evtLog *eventlog.NATS
+	logger *slog.Logger
 }
 
 func NewWorker(c Client, opts *WorkerOptions) (*workerImpl, error) {
 	if opts == nil {
 		opts = &WorkerOptions{}
 	}
+
+	logger := opts.Logger
+	if logger == nil && c != nil {
+		logger = c.getLogger()
+	}
+	logger = defaultLogger(logger)
 
 	streamName := buildHistoryStreamName(opts)
 	subjectPrefix := opts.Namespace
@@ -108,6 +115,7 @@ func NewWorker(c Client, opts *WorkerOptions) (*workerImpl, error) {
 		evtLog:           log,
 		workflowRegistry: NewInMemoryRegistry(),
 		activityRegistry: NewInMemoryRegistry(),
+		logger:           logger,
 	}, nil
 }
 
@@ -174,7 +182,7 @@ func (w *workerImpl) runProcessingLoop(ctx context.Context) error {
 		aggregate.EventSerializer(w.converter),
 	)
 	if err != nil {
-		log.Printf("Cannot create repository, sending Nak: %v", err)
+		w.logger.Error("cannot create repository, sending NAK", "error", err)
 		return err
 	}
 
@@ -199,7 +207,7 @@ func (w *workerImpl) runProcessingLoop(ctx context.Context) error {
 				{
 					wfctx, err := repo.Get(gCtx, api.WorkflowID(task.WorkflowID))
 					if err != nil {
-						log.Printf("Failed to replay workflow: %v", err)
+						w.logger.Error("failed to replay workflow", "workflow_id", task.WorkflowID, "error", err)
 						// Terminate the task if we can't even replay the workflow.
 						token.Term(gCtx)
 						return err
@@ -207,13 +215,14 @@ func (w *workerImpl) runProcessingLoop(ctx context.Context) error {
 
 					wfctx.Context = gCtx
 					wfctx.converter = w.converter
+					wfctx.logger = w.logger
 
 					err = w.processWorkflowTask(wfctx, task)
 					if err != nil {
-						log.Printf("Workflow task failed, sending Nak: %v", err)
+						w.logger.Error("workflow task failed, sending NAK", "workflow_id", task.WorkflowID, "error", err)
 						token.Nak(gCtx)
 					} else {
-						log.Printf("Workflow task succeeded, sending Ack")
+						w.logger.Debug("workflow task succeeded, sending ACK", "workflow_id", task.WorkflowID)
 						token.Ack(gCtx)
 					}
 
@@ -227,7 +236,7 @@ func (w *workerImpl) runProcessingLoop(ctx context.Context) error {
 				{
 					wfctx, err := repo.Get(gCtx, api.WorkflowID(task.WorkflowID))
 					if err != nil {
-						log.Printf("Failed to replay activity: %v", err)
+						w.logger.Error("failed to replay activity", "workflow_id", task.WorkflowID, "error", err)
 						// Terminate the task if we can't even replay the workflow.
 						token.Term(gCtx)
 						return err
@@ -235,13 +244,14 @@ func (w *workerImpl) runProcessingLoop(ctx context.Context) error {
 
 					wfctx.Context = gCtx
 					wfctx.converter = w.converter
+					wfctx.logger = w.logger
 
 					err = w.processActivityTask(wfctx, task)
 					if err != nil {
-						log.Printf("Activity task failed, sending Nak: %v", err)
+						w.logger.Error("activity task failed, sending NAK", "workflow_id", task.WorkflowID, "activity", task.ActivityFn, "error", err)
 						token.Nak(gCtx)
 					} else {
-						log.Printf("Activity task succeeded, sending Ack")
+						w.logger.Debug("activity task succeeded, sending ACK", "workflow_id", task.WorkflowID, "activity", task.ActivityFn)
 						token.Ack(gCtx)
 					}
 
@@ -252,7 +262,7 @@ func (w *workerImpl) runProcessingLoop(ctx context.Context) error {
 				}
 			default:
 				// poison pill
-				log.Println("got poison pill")
+				w.logger.Warn("received poison pill, terminating task")
 				token.Term(gCtx)
 			}
 
@@ -266,13 +276,13 @@ func (w *workerImpl) runProcessingLoop(ctx context.Context) error {
 func (w *workerImpl) processActivityTask(wfctx *workflowContext, task *api.ActivityTask) error {
 	fn, err := w.activityRegistry.get(task.ActivityFn)
 	if err != nil {
-		log.Printf("failed to get %s from activity registry", task.ActivityFn)
+		w.logger.Error("activity not found in registry", "activity", task.ActivityFn, "error", err)
 		return err
 	}
 
 	result, err := w.executeActivityFunc(wfctx, fn, task.Input)
 	if err != nil {
-		log.Printf("Activity %s failed (attempt %d): %v", task.ActivityFn, task.Attempt, err)
+		w.logger.Warn("activity execution failed", "activity", task.ActivityFn, "attempt", task.Attempt, "error", err)
 
 		// Check if we should retry based on the retry policy
 		if shouldRetry := w.evaluateRetryDecision(task, err); shouldRetry {
@@ -289,7 +299,7 @@ func (w *workerImpl) processActivityTask(wfctx *workflowContext, task *api.Activ
 				NextRetryDelay: nextDelay.Milliseconds(),
 			})
 
-			log.Printf("Activity %s failed (attempt %d), will retry after %v", task.ActivityFn, task.Attempt, nextDelay)
+			w.logger.Info("activity will retry", "activity", task.ActivityFn, "attempt", task.Attempt, "next_delay", nextDelay)
 			return nil
 		}
 
@@ -326,13 +336,13 @@ func (w *workerImpl) evaluateRetryDecision(task *api.ActivityTask, err error) bo
 
 	// Check if max attempts exceeded
 	if policy.MaximumAttempts > 0 && task.Attempt >= policy.MaximumAttempts {
-		log.Printf("Max attempts (%d) reached for activity %s", policy.MaximumAttempts, task.ActivityFn)
+		w.logger.Info("max attempts reached for activity", "activity", task.ActivityFn, "max_attempts", policy.MaximumAttempts)
 		return false
 	}
 
 	// Check if error is non-retryable
 	if len(policy.NonRetryableErrorTypes) > 0 && slices.Contains(policy.NonRetryableErrorTypes, err.Error()) {
-		log.Printf("Error '%s' is non-retryable for activity %s", err.Error(), task.ActivityFn)
+		w.logger.Info("non-retryable error for activity", "activity", task.ActivityFn, "error", err.Error())
 		return false
 	}
 
@@ -341,7 +351,7 @@ func (w *workerImpl) evaluateRetryDecision(task *api.ActivityTask, err error) bo
 		elapsedMs := time.Now().UnixMilli() - task.ScheduledAtMs
 		nextDelay := w.calculateRetryDelay(task)
 		if elapsedMs+nextDelay.Milliseconds() > task.ScheduleToCloseTimeoutMs {
-			log.Printf("ScheduleToCloseTimeout would be exceeded for activity %s", task.ActivityFn)
+			w.logger.Info("schedule-to-close timeout would be exceeded for activity", "activity", task.ActivityFn)
 			return false
 		}
 	}
@@ -397,26 +407,26 @@ func (w *workerImpl) processWorkflowTask(wfctx *workflowContext, task *api.Workf
 					pending = true
 					return
 				}
-				log.Printf("panic but not a blocking future: %v\n", r)
+				w.logger.Error("workflow execution panic", "workflow_id", task.WorkflowID, "panic", r)
 				err = fmt.Errorf("workflow panic: %v", r)
 			}
 		}()
 
 		fn, err := w.workflowRegistry.get(task.WorkflowFn)
 		if err != nil {
-			log.Printf("cannot get workflow function: %v\n", err)
+			w.logger.Error("workflow function lookup failed", "workflow", task.WorkflowFn, "error", err)
 			return err
 		}
 		wfv := reflect.ValueOf(fn)
 		wft := wfv.Type()
 		inputv := make([]reflect.Value, len(task.Input))
-		slog.Debug(fmt.Sprintf("input params: %v with length: %v", task.Input, len(task.Input)))
+		w.logger.Debug("workflow input received", "workflow_id", task.WorkflowID, "input_len", len(task.Input))
 		for idx, arg := range task.Input {
 			// Skip the first parameter which is the context
 			paramType := wft.In(idx + 1)
 			convertedArg, err := w.convertToType(arg, paramType)
 			if err != nil {
-				slog.Debug(fmt.Sprintf("Failed to convert parameter %d: %v", idx, err))
+				w.logger.Debug("failed to convert workflow parameter", "workflow_id", task.WorkflowID, "param_index", idx, "error", err)
 				return err
 			}
 			inputv[idx] = convertedArg

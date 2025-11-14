@@ -166,7 +166,7 @@ type (
 // OrderWithRetriesWorkflow demonstrates automatic activity retries using retry policies.
 // Notice how clean the workflow code is - no manual retry loops needed!
 func OrderWithRetriesWorkflow(ctx workflow.Context, orderID string, customerID string, amount float64) (any, error) {
-	log.Printf("🚀 Starting order workflow: %s", orderID)
+	log.Printf("Starting order workflow: %s", orderID)
 
 	// Reset attempt counters so every workflow execution shows the full story
 	paymentAttempts.Store(0)
@@ -187,7 +187,7 @@ func OrderWithRetriesWorkflow(ctx workflow.Context, orderID string, customerID s
 		return nil, fmt.Errorf("order validation failed: %w", err)
 	}
 
-	log.Printf("🛡️ Order validation approved (risk score %d)", validation.RiskScore)
+	log.Printf("Order validation approved (risk score %d)", validation.RiskScore)
 
 	// Configure retry policy for payment activity
 	// This activity will fail twice before succeeding, demonstrating automatic retries
@@ -219,7 +219,7 @@ func OrderWithRetriesWorkflow(ctx workflow.Context, orderID string, customerID s
 		return nil, fmt.Errorf("payment failed after retries: %w", err)
 	}
 
-	log.Printf("💳 Payment successful after %d attempt(s): %s", payment.AttemptNum, payment.ChargeID)
+	log.Printf("Payment successful after %d attempt(s): %s", payment.AttemptNum, payment.ChargeID)
 
 	// Step 3: Reserve inventory with its own retry profile
 	inventoryCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
@@ -245,7 +245,7 @@ func OrderWithRetriesWorkflow(ctx workflow.Context, orderID string, customerID s
 		return nil, fmt.Errorf("inventory reservation failed: %w", err)
 	}
 
-	log.Printf("🏬 Inventory reserved after %d attempt(s): %s", reservation.AttemptNum, reservation.ReservationID)
+	log.Printf("Inventory reserved after %d attempt(s): %s", reservation.AttemptNum, reservation.ReservationID)
 
 	// Step 4: Package the order now that stock is confirmed
 	var packResult PackageResult
@@ -260,7 +260,7 @@ func OrderWithRetriesWorkflow(ctx workflow.Context, orderID string, customerID s
 		return nil, fmt.Errorf("packaging failed: %w", err)
 	}
 
-	log.Printf("📦 Order packaged with label %s", packResult.LabelURL)
+	log.Printf("Order packaged with label %s", packResult.LabelURL)
 
 	// Configure retry policy for shipping activity
 	// This demonstrates a different retry configuration - more aggressive retries
@@ -291,7 +291,7 @@ func OrderWithRetriesWorkflow(ctx workflow.Context, orderID string, customerID s
 		return nil, fmt.Errorf("shipping failed after retries: %w", err)
 	}
 
-	log.Printf("📦 Shipping successful after %d attempt(s): %s", shipping.AttemptNum, shipping.TrackingID)
+	log.Printf("Shipping successful after %d attempt(s): %s", shipping.AttemptNum, shipping.TrackingID)
 
 	// Step 6: Notify the customer
 	var notification NotificationResult
@@ -307,7 +307,7 @@ func OrderWithRetriesWorkflow(ctx workflow.Context, orderID string, customerID s
 		return nil, fmt.Errorf("customer notification failed: %w", err)
 	}
 
-	log.Printf("📨 Customer notified via %s", notification.Channel)
+	log.Printf("Customer notified via %s", notification.Channel)
 
 	return map[string]any{
 		"order_id":             orderID,

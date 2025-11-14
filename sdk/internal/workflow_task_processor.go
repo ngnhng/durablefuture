@@ -18,7 +18,6 @@ import (
 	"context"
 	"fmt"
 	"iter"
-	"log/slog"
 	"sync"
 
 	"github.com/nats-io/nats.go/jetstream"
@@ -116,7 +115,7 @@ func (c *Conn) ReceiveTask(ctx context.Context, includeWorkflow, includeActivity
 				ch.handler(msg)
 			})
 			if err != nil {
-				slog.Error("task consumer failed", "type", ch.taskType, "error", err)
+				c.Logger().Error("task consumer failed", "type", ch.taskType, "error", err)
 				return
 			}
 			defer consumeCtx.Stop()

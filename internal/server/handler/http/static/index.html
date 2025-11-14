@@ -280,7 +280,9 @@
           </div>
 
           <!-- Event Stack -->
-          <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <div
+            class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] flex flex-col"
+          >
             <div class="flex items-center justify-between mb-4">
               <h2 class="text-xl font-semibold">Execution Timeline</h2>
               <button
@@ -314,7 +316,7 @@
             </div>
             <div
               id="event-stack"
-              class="event-stack space-y-2 max-h-[32rem] overflow-y-auto"
+              class="event-stack space-y-2 max-h-[32rem] lg:max-h-full overflow-y-auto flex-1 min-h-0"
             >
               <p class="text-gray-500 text-center py-8 text-sm">
                 Click "Launch Workflow" to start
@@ -538,26 +540,30 @@
             });
           }
 
-          // Check for retries
-          if (step.attempts > 1) {
-            const existingRetries = events.filter(
+          // Emit retry attempt events for each recorded retry
+          (step.retry_history || []).forEach((retry) => {
+            const hasEvent = events.some(
               (e) =>
-                e.type === "activity_retried" && e.activityName === activityName
-            ).length;
-
-            if (existingRetries < step.attempts - 1) {
+                e.type === "activity_retry_attempt" &&
+                e.activityName === activityName &&
+                e.attempt === retry.attempt
+            );
+            if (!hasEvent) {
               addEvent({
-                type: "activity_retried",
-                icon: "🔄",
-                title: "Activity Retrying",
-                message: `${activityName} - Attempt ${step.attempts}`,
-                detail: step.error || "Transient failure, retrying...",
+                type: "activity_retry_attempt",
+                icon: "🔁",
+                title: `Retry Attempt ${retry.attempt}`,
+                message: `${activityName}`,
+                detail: formatRetryDetail(retry),
                 color: "yellow",
-                timestamp: new Date(),
+                timestamp: retry.recorded_at
+                  ? new Date(retry.recorded_at)
+                  : new Date(),
                 activityName,
+                attempt: retry.attempt,
               });
             }
-          }
+          });
 
           // Check for activity completed
           if (
@@ -820,6 +826,22 @@
           .replace(/Activity$/, "")
           .replace(/([A-Z])/g, " $1")
           .trim();
+      }
+
+      function formatRetryDetail(retry) {
+        if (!retry) return "";
+        const segments = [];
+        if (retry.error) {
+          segments.push(`Error: ${retry.error}`);
+        }
+        if (
+          retry.next_retry_delay_ms !== undefined &&
+          retry.next_retry_delay_ms !== null
+        ) {
+          const delaySeconds = (retry.next_retry_delay_ms / 1000).toFixed(1);
+          segments.push(`Next retry in ${delaySeconds}s`);
+        }
+        return segments.join(" • ");
       }
 
       function formatWorkflowResult(result) {

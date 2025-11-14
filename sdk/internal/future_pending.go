@@ -17,7 +17,7 @@ package internal
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 
 	"github.com/ngnhng/durablefuture/api/serde"
 	"github.com/ngnhng/durablefuture/sdk/internal/utils"
@@ -35,6 +35,7 @@ type pending struct {
 	value      []any
 	err        error
 	converter  serde.BinarySerde // for serialization-agnostic type conversion
+	logger     *slog.Logger
 }
 
 func (f *pending) Get(ctx context.Context, resultPtr any) error {
@@ -46,7 +47,7 @@ func (f *pending) Get(ctx context.Context, resultPtr any) error {
 	}
 	if resultPtr != nil && f.value != nil {
 
-		log.Printf("[Activity Get] %v", utils.DebugAnyValues(f.value))
+		f.loggerOrDefault().Debug("activity future resolved", "values", utils.DebugAnyValues(f.value))
 
 		// Check if we have both result and error parts
 		if len(f.value) != 2 {
@@ -86,4 +87,11 @@ func (f *pending) Get(ctx context.Context, resultPtr any) error {
 
 	}
 	return nil
+}
+
+func (f *pending) loggerOrDefault() *slog.Logger {
+	if f == nil {
+		return slog.Default()
+	}
+	return defaultLogger(f.logger)
 }

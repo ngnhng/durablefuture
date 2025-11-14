@@ -17,7 +17,7 @@ package internal
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"math"
 	"slices"
 	"time"
@@ -41,6 +41,7 @@ var _ Context = (*workflowContext)(nil)
 type workflowContext struct {
 	*workflowState
 	context.Context
+	logger *slog.Logger
 }
 
 type workflowState struct {
@@ -62,11 +63,16 @@ type activityReplayRecord struct {
 }
 
 func NewEmptyWorkflowContext() *workflowContext {
+	return NewWorkflowContextWithLogger(nil)
+}
+
+func NewWorkflowContextWithLogger(logger *slog.Logger) *workflowContext {
 	return &workflowContext{
 		workflowState: &workflowState{
 			activities: make(map[string]*activityReplay),
 		},
 		Context: context.Background(),
+		logger:  defaultLogger(logger),
 	}
 }
 
@@ -85,7 +91,7 @@ func (c *workflowContext) ensureActivityReplay(fnName string) *activityReplay {
 func (c *workflowContext) ExecuteActivity(activityFn any, args ...any) Future {
 	fnName, err := utils.ExtractFullFunctionName(activityFn)
 	if err != nil { /* panic */
-		log.Printf("error: %v", err)
+		c.loggerOrDefault().Error("failed to extract activity function name", "error", err)
 		panic(err)
 	}
 	entry := c.ensureActivityReplay(fnName)
@@ -95,9 +101,9 @@ func (c *workflowContext) ExecuteActivity(activityFn any, args ...any) Future {
 		record := entry.history[entry.consumed]
 		entry.consumed++
 		if record.err != nil {
-			return &pending{isResolved: true, err: record.err, converter: c.converter}
+			return &pending{isResolved: true, err: record.err, converter: c.converter, logger: c.logger}
 		}
-		return &pending{isResolved: true, value: record.result, converter: c.converter}
+		return &pending{isResolved: true, value: record.result, converter: c.converter, logger: c.logger}
 	}
 
 	// No cached history entry means this is a fresh execution.
@@ -130,7 +136,7 @@ func (c *workflowContext) ExecuteActivity(activityFn any, args ...any) Future {
 		panic(fmt.Errorf("record activity scheduled event: %w", err))
 	}
 
-	return &pending{isResolved: false, converter: c.converter}
+	return &pending{isResolved: false, converter: c.converter, logger: c.logger}
 }
 
 // activityOptionsKey must match the key in workflow package
@@ -207,15 +213,12 @@ func (r *RetryPolicy) ShouldRetry(attempt int, err error) bool {
 func getActivityOptions(ctx Context) *ActivityOptions {
 	val := ctx.Value(activityOptionsKey)
 	if val == nil {
-		// Return nil if no options are set (backwards compatible)
 		return nil
 	}
 
-	// Since workflow.ActivityOptions is now a type alias to internal.ActivityOptions,
-	// we can directly type assert
 	opts, ok := val.(ActivityOptions)
 	if !ok {
-		log.Panic("ActivityOptions has wrong type in context.")
+		panic("ActivityOptions has wrong type in context.")
 	}
 	return &opts
 }
@@ -241,7 +244,15 @@ func (c *workflowContext) WithValue(key any, value any) Context {
 	return &workflowContext{
 		workflowState: c.workflowState,
 		Context:       context.WithValue(baseCtx, key, value),
+		logger:        c.logger,
 	}
+}
+
+func (c *workflowContext) loggerOrDefault() *slog.Logger {
+	if c == nil {
+		return slog.Default()
+	}
+	return defaultLogger(c.logger)
 }
 
 // getNewEvents is an unexported method accessible only within the `workflow` package.

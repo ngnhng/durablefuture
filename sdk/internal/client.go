@@ -17,6 +17,7 @@ package internal
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/gofrs/uuid/v5"
 	"github.com/nats-io/nats.go"
@@ -38,11 +39,13 @@ type (
 		// Accessors to underlying components, not exposed for public consumption
 		getConn() *Conn
 		getSerde() serde.BinarySerde
+		getLogger() *slog.Logger
 	}
 
 	ClientOptions struct {
 		Namespace string
 		Conn      *nats.Conn
+		Logger    *slog.Logger
 	}
 )
 
@@ -50,6 +53,7 @@ type clientImpl struct {
 	WorkflowExecutor
 
 	converter serde.BinarySerde
+	logger    *slog.Logger
 	options   *ClientOptions
 	nc        *Conn
 }
@@ -59,14 +63,17 @@ func NewClient(options *ClientOptions) (Client, error) {
 		return nil, fmt.Errorf("client options must include an established NATS connection")
 	}
 
+	logger := defaultLogger(options.Logger)
 	conn, err := wrapExisting(options.Conn, options.Namespace, nil)
 	if err != nil {
 		return nil, err
 	}
+	conn.SetLogger(logger)
 
 	return &clientImpl{
 		WorkflowExecutor: conn,
 		converter:        &serde.MsgpackSerde{}, // Use MessagePack for better performance
+		logger:           logger,
 		options:          options,
 		nc:               conn,
 	}, nil
@@ -103,3 +110,4 @@ func (c *clientImpl) ExecuteWorkflow(ctx context.Context, workflowFn any, input 
 
 func (c *clientImpl) getConn() *Conn              { return c.nc }
 func (c *clientImpl) getSerde() serde.BinarySerde { return c.converter }
+func (c *clientImpl) getLogger() *slog.Logger     { return c.logger }
