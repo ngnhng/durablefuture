@@ -37,7 +37,7 @@ go run ./examples/cmd -list-examples
 Assume we want to run the recovery scenario:
 
 ```bash
-export EXAMPLE_SCENARIO=order-recovery
+export EXAMPLE_SCENARIO=order-retries
 ```
 
 ### 2. Boot the infrastructure + workers
