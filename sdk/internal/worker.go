@@ -379,9 +379,7 @@ func (w *workerImpl) calculateRetryDelay(task *api.ActivityTask) time.Duration {
 	)
 
 	// Cap at maximum interval
-	if nextDelay > maxInterval {
-		nextDelay = maxInterval
-	}
+	nextDelay = min(nextDelay, maxInterval)
 
 	return nextDelay
 }

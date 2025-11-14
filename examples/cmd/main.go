@@ -16,10 +16,14 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
+	"net/http"
+	"os"
 	"strings"
+	"time"
 
 	"github.com/nats-io/nats.go"
 	"golang.org/x/sync/errgroup"
@@ -37,6 +41,7 @@ func main() {
 	natsURL := flag.String("nats-url", "nats://localhost:4222", "NATS connection URL")
 	exampleName := flag.String("example", "order", "Example scenario to execute")
 	listExamples := flag.Bool("list-examples", false, "List available example scenarios and exit")
+	httpPort := flag.String("http-port", "", "HTTP port for health/crash endpoints (optional)")
 	flag.Parse()
 
 	if *listExamples {
@@ -64,28 +69,37 @@ func main() {
 		log.Fatalf("creating workflow client failed: %v", err)
 	}
 
+	// Start HTTP server if port is specified (for demo crash/health endpoints)
+	g, gCtx := errgroup.WithContext(ctx)
+	if *httpPort != "" {
+		g.Go(func() error {
+			return startHTTPServer(gCtx, *httpPort, *workerType)
+		})
+	}
+
 	switch strings.ToLower(*workerType) {
 	case "workflow":
-		if err := runWorkflowWorker(ctx, workflowClient, example); err != nil {
-			log.Fatalf("workflow worker exited: %v", err)
-		}
+		g.Go(func() error {
+			return runWorkflowWorker(gCtx, workflowClient, example)
+		})
 	case "activity":
-		if err := runActivityWorker(ctx, workflowClient, example); err != nil {
-			log.Fatalf("activity worker exited: %v", err)
-		}
+		g.Go(func() error {
+			return runActivityWorker(gCtx, workflowClient, example)
+		})
 	case "both":
-		g, gCtx := errgroup.WithContext(ctx)
 		g.Go(func() error { return runWorkflowWorker(gCtx, workflowClient, example) })
 		g.Go(func() error { return runActivityWorker(gCtx, workflowClient, example) })
-		if err := g.Wait(); err != nil {
-			log.Fatalf("workers exited: %v", err)
-		}
 	case "client":
 		if err := example.RunClient(ctx, workflowClient); err != nil {
 			log.Fatalf("client execution failed: %v", err)
 		}
+		return
 	default:
 		log.Fatalf("invalid worker type: %s. Use 'workflow', 'activity', 'both', or 'client'", *workerType)
+	}
+
+	if err := g.Wait(); err != nil {
+		log.Fatalf("worker exited: %v", err)
 	}
 }
 
@@ -119,4 +133,76 @@ func runActivityWorker(ctx context.Context, c client.Client, example scenarios.E
 		return fmt.Errorf("error running activity worker: %w", err)
 	}
 	return nil
+}
+
+// startHTTPServer starts a simple HTTP server for health checks and crash endpoints
+func startHTTPServer(ctx context.Context, port string, workerType string) error {
+	mux := http.NewServeMux()
+
+	// Health endpoint
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{
+			"status":      "healthy",
+			"worker_type": workerType,
+		})
+	})
+
+	// Crash endpoint
+	mux.HandleFunc("/crash", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		log.Printf("[%s worker] Crash requested via HTTP endpoint", workerType)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{
+			"status":  "crashing",
+			"message": fmt.Sprintf("%s worker will exit", workerType),
+		})
+
+		// Give response time to send
+		go func() {
+			time.Sleep(100 * time.Millisecond)
+			log.Printf("[%s worker] Exiting...", workerType)
+			os.Exit(1)
+		}()
+	})
+
+	server := &http.Server{
+		Addr:    ":" + port,
+		Handler: corsMiddleware(mux),
+	}
+
+	log.Printf("[%s worker] HTTP server listening on :%s", workerType, port)
+
+	errCh := make(chan error, 1)
+	go func() {
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			errCh <- err
+		}
+	}()
+
+	select {
+	case <-ctx.Done():
+		return server.Shutdown(context.Background())
+	case err := <-errCh:
+		return err
+	}
+}
+
+func corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
 }

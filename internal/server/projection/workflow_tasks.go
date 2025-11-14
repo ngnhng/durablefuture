@@ -18,7 +18,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"strings"
 
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
@@ -60,6 +59,7 @@ func WorkflowTasks(ctx context.Context, conn *jetstreamx.Connection, conv serde.
 		shouldCreateTask := false
 		var workflowFnName string
 		var inputArgs []any
+		var workflowID api.WorkflowID
 
 		switch e := event.(type) {
 		case *api.WorkflowStarted:
@@ -67,11 +67,13 @@ func WorkflowTasks(ctx context.Context, conn *jetstreamx.Connection, conv serde.
 			shouldCreateTask = true
 			workflowFnName = e.WorkflowFnName
 			inputArgs = e.Input
+			workflowID = e.ID
 
 		case *api.ActivityCompleted:
 			shouldCreateTask = true
 			workflowFnName = e.WorkflowFnName
-			inputArgs, err = loadWorkflowInputArgs(ctx, js, conv, workflowFnName)
+			workflowID = e.ID
+			inputArgs, err = loadWorkflowInputArgs(ctx, js, conv, workflowFnName, workflowID)
 			if err != nil {
 				slog.Info(fmt.Sprintf("PROJECTOR/WF: %v", err))
 				msg.Term()
@@ -82,7 +84,8 @@ func WorkflowTasks(ctx context.Context, conn *jetstreamx.Connection, conv serde.
 			slog.Info(fmt.Sprintf("PROJECTOR/WF: got ActivityFailed event: %v", event))
 			shouldCreateTask = true
 			workflowFnName = e.WorkflowFnName
-			inputArgs, err = loadWorkflowInputArgs(ctx, js, conv, workflowFnName)
+			workflowID = e.ID
+			inputArgs, err = loadWorkflowInputArgs(ctx, js, conv, workflowFnName, workflowID)
 			if err != nil {
 				slog.Info(fmt.Sprintf("PROJECTOR/WF: %v", err))
 				msg.Term()
@@ -100,10 +103,10 @@ func WorkflowTasks(ctx context.Context, conn *jetstreamx.Connection, conv serde.
 		}
 
 		if shouldCreateTask {
-			workflowID := strings.Split(msg.Subject(), ".")[1]
+			idStr := workflowID.String()
 
 			task := api.WorkflowTask{
-				WorkflowID: workflowID,
+				WorkflowID: idStr,
 				WorkflowFn: workflowFnName,
 				Input:      inputArgs,
 			}
@@ -116,7 +119,7 @@ func WorkflowTasks(ctx context.Context, conn *jetstreamx.Connection, conv serde.
 				return
 			}
 
-			taskSubject := fmt.Sprintf("workflow.%s.tasks", workflowID)
+			taskSubject := fmt.Sprintf("workflow.%s.tasks", idStr)
 			_, err = js.PublishMsg(
 				ctx,
 				&nats.Msg{
@@ -146,15 +149,16 @@ func WorkflowTasks(ctx context.Context, conn *jetstreamx.Connection, conv serde.
 	return nil
 }
 
-func loadWorkflowInputArgs(ctx context.Context, js jetstream.JetStream, conv serde.BinarySerde, workflowFnName string) ([]any, error) {
+func loadWorkflowInputArgs(ctx context.Context, js jetstream.JetStream, conv serde.BinarySerde, workflowFnName string, workflowID api.WorkflowID) ([]any, error) {
 	kv, err := js.KeyValue(ctx, constant.WorkflowInputBucket)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get KV store: %w", err)
 	}
 
-	kvEntry, err := kv.Get(ctx, workflowFnName)
+	key := api.WorkflowInputKey(workflowFnName, workflowID)
+	kvEntry, err := kv.Get(ctx, key)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get input args from KV for %s: %w", workflowFnName, err)
+		return nil, fmt.Errorf("failed to get input args from KV for %s: %w", key, err)
 	}
 
 	var inputArgs []any

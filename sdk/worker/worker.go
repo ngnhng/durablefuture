@@ -17,7 +17,7 @@ package worker
 import (
 	"context"
 
-	clientpkg "github.com/ngnhng/durablefuture/sdk/client"
+	"github.com/ngnhng/durablefuture/sdk/client"
 	"github.com/ngnhng/durablefuture/sdk/internal"
 )
 
@@ -39,6 +39,6 @@ type (
 	Options = internal.WorkerOptions
 )
 
-func NewWorker(c clientpkg.Client, options *Options) (Worker, error) {
+func NewWorker(c client.Client, options *Options) (Worker, error) {
 	return internal.NewWorker(c, options)
 }

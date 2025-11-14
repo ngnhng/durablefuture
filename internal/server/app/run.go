@@ -30,6 +30,7 @@ import (
 type Options struct {
 	NATSHost string
 	NATSPort string
+	HTTPPort string
 }
 
 func Run(ctx context.Context, opts Options) error {
@@ -61,7 +62,12 @@ func Run(ctx context.Context, opts Options) error {
 	}()
 
 	// Use MessagePack for better performance and type preservation
-	mgr, err := NewManager(ctx, cfg, &serde.MsgpackSerde{})
+	httpPort := opts.HTTPPort
+	if httpPort == "" {
+		httpPort = "8080"
+	}
+
+	mgr, err := NewManager(ctx, cfg, &serde.MsgpackSerde{}, httpPort)
 	if err != nil {
 		return err
 	}

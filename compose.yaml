@@ -33,13 +33,15 @@ services:
         TARGETPKG: ./cmd/durablefuture-server
     depends_on:
       - nats
+    ports:
+      - "8080:8080"
     environment:
       - MODE=debug
       - NATS_HOST=nats
       - NATS_PORT=4222
       - NATS_URL=nats://nats:4222
     entrypoint: ["/bin/app"]
-    command: ["--host", "nats", "--port", "4222"]
+    command: ["--host", "nats", "--port", "4222", "--http-port", "8080"]
 
   workflow-worker:
     build:
@@ -51,6 +53,9 @@ services:
     depends_on:
       - nats
       - server
+    ports:
+      - "8081:8081"
+    restart: always
     environment:
       - NATS_URL=nats://nats:4222
       - EXAMPLE_SCENARIO=${EXAMPLE_SCENARIO:-order}
@@ -60,6 +65,7 @@ services:
         "-worker=workflow",
         "-example=${EXAMPLE_SCENARIO:-order}",
         "-nats-url=nats://nats:4222",
+        "-http-port=8081",
       ]
 
   activity-worker:
@@ -72,6 +78,9 @@ services:
     depends_on:
       - nats
       - server
+    ports:
+      - "8082:8082"
+    restart: always
     environment:
       - NATS_URL=nats://nats:4222
       - EXAMPLE_SCENARIO=${EXAMPLE_SCENARIO:-order}
@@ -81,4 +90,5 @@ services:
         "-worker=activity",
         "-example=${EXAMPLE_SCENARIO:-order}",
         "-nats-url=nats://nats:4222",
+        "-http-port=8082",
       ]

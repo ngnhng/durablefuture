@@ -23,7 +23,6 @@ import (
 	"github.com/gofrs/uuid/v5"
 	"github.com/nats-io/nats.go"
 	"github.com/ngnhng/durablefuture/api"
-	constant "github.com/ngnhng/durablefuture/api"
 	"github.com/ngnhng/durablefuture/api/serde"
 	jetstreamx "github.com/ngnhng/durablefuture/internal/server/infra/jetstream"
 )
@@ -113,7 +112,7 @@ func (h *Handler) HandleRequest(msg *nats.Msg) {
 			}
 
 			// Store input arguments in KV store using workflow function name as key
-			kv, err := js.KeyValue(context.Background(), constant.WorkflowInputBucket)
+			kv, err := js.KeyValue(context.Background(), api.WorkflowInputBucket)
 			if err != nil {
 				slog.Debug(fmt.Sprintf("failed to get KV store: %v", err))
 				h.sendErrorReply(msg, "", "internal server error: failed to get KV store: "+err.Error())
@@ -127,7 +126,8 @@ func (h *Handler) HandleRequest(msg *nats.Msg) {
 				return
 			}
 
-			_, err = kv.Put(context.Background(), data.WorkflowFnName, inputArgsData)
+			key := api.WorkflowInputKey(data.WorkflowFnName, api.WorkflowID(workflowID.String()))
+			_, err = kv.Put(context.Background(), key, inputArgsData)
 			if err != nil {
 				slog.Debug(fmt.Sprintf("failed to store input args in KV: %v", err))
 				h.sendErrorReply(msg, "", "internal server error: failed to store input args: "+err.Error())
@@ -135,14 +135,14 @@ func (h *Handler) HandleRequest(msg *nats.Msg) {
 			}
 			slog.Debug(fmt.Sprintf("stored input args in KV for workflow function: %s", data.WorkflowFnName))
 
-			subject := fmt.Sprintf(constant.HistoryPublishSubjectPattern, idStr)
+			subject := fmt.Sprintf(api.HistoryPublishSubjectPattern, idStr)
 			eventBytes, _ := h.conv.SerializeBinary(event)
 			startEventMsg := &nats.Msg{
 				Subject: subject,
 				Data:    eventBytes,
 				Header: nats.Header{
-					constant.ChronicleEventNameHeader:        []string{event.EventName()},
-					constant.ChronicleAggregateVersionHeader: []string{strconv.FormatUint(1, 10)},
+					api.ChronicleEventNameHeader:        []string{event.EventName()},
+					api.ChronicleAggregateVersionHeader: []string{strconv.FormatUint(1, 10)},
 				},
 			}
 			_, err = js.PublishMsg(context.Background(), startEventMsg)
@@ -177,8 +177,8 @@ func (h *Handler) HandleRequest(msg *nats.Msg) {
 
 func RunProcessor(ctx context.Context, conn *jetstreamx.Connection, handler *Handler) error {
 	sub, err := conn.QueueSubscribe(
-		constant.CommandRequestSubjectPattern,
-		constant.ManagerCommandProcessorsConsumer,
+		api.CommandRequestSubjectPattern,
+		api.ManagerCommandProcessorsConsumer,
 		handler.HandleRequest,
 	)
 	if err != nil {
