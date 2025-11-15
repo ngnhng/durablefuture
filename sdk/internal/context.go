@@ -139,10 +139,8 @@ func (c *workflowContext) ExecuteActivity(activityFn any, args ...any) Future {
 	return &pending{isResolved: false, converter: c.converter, logger: c.logger}
 }
 
-// activityOptionsKey must match the key in workflow package
-const activityOptionsKey = "github.com/ngnhng/durablefuture/sdk/workflow.ActivityOptions"
+const ActivityOptionsKey = "github.com/ngnhng/durablefuture/sdk/workflow.ActivityOptions"
 
-// ActivityOptions mirrors workflow.ActivityOptions to avoid import cycle
 type ActivityOptions struct {
 	// ScheduleToCloseTimeout is the total time allowed for the Activity during the entire Workflow Execution, including retries
 	// The zero value of this uses default value of Unlimited.
@@ -160,7 +158,6 @@ type ActivityOptions struct {
 	RetryPolicy *RetryPolicy
 }
 
-// RetryPolicy mirrors workflow.RetryPolicy to avoid import cycle
 type RetryPolicy struct {
 	// Backoff interval for the first retry. If BackoffCoefficient is 1.0 then it is used for all retries.
 	// If not set or set to 0, a default interval of 1s will be used.
@@ -211,7 +208,7 @@ func (r *RetryPolicy) ShouldRetry(attempt int, err error) bool {
 }
 
 func getActivityOptions(ctx Context) *ActivityOptions {
-	val := ctx.Value(activityOptionsKey)
+	val := ctx.Value(ActivityOptionsKey)
 	if val == nil {
 		return nil
 	}

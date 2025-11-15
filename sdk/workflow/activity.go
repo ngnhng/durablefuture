@@ -18,8 +18,7 @@ import (
 	"github.com/ngnhng/durablefuture/sdk/internal"
 )
 
-// activityOptionsKey is a string to avoid import cycle issues
-const activityOptionsKey = "github.com/ngnhng/durablefuture/sdk/workflow.ActivityOptions"
+const activityOptionsKey = internal.ActivityOptionsKey
 
 type (
 	ActivityOptions = internal.ActivityOptions
