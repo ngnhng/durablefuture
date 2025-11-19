@@ -23,7 +23,6 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/ngnhng/durablefuture/api"
 	"github.com/ngnhng/durablefuture/api/serde"
-	"github.com/ngnhng/durablefuture/sdk/internal/utils"
 )
 
 var _ Client = (*clientImpl)(nil)
@@ -72,7 +71,7 @@ func NewClient(options *ClientOptions) (Client, error) {
 
 	return &clientImpl{
 		WorkflowExecutor: conn,
-		converter:        &serde.MsgpackSerde{}, // Use MessagePack for better performance
+		converter:        &serde.MsgpackSerde{},
 		logger:           logger,
 		options:          options,
 		nc:               conn,
@@ -83,7 +82,7 @@ func NewClient(options *ClientOptions) (Client, error) {
 // It starts a workflow execution by sending a command request to the manager and waits for the reply containing the workflow ID.
 func (c *clientImpl) ExecuteWorkflow(ctx context.Context, workflowFn any, input ...any) (Future, error) {
 
-	workflowName, err := utils.ExtractFullFunctionName(workflowFn)
+	workflowName, err := extractFullFunctionName(workflowFn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to extract workflow function name: %w", err)
 	}

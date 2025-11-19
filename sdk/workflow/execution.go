@@ -61,24 +61,19 @@ func (w *Execution) Get(ctx context.Context, valuePtr any) error {
 		return fmt.Errorf("error starting result watch: %w", err)
 	}
 
-	// 2. Use a select statement with the channel and the context
-	// to handle cancellation while waiting.
 	select {
 	case <-ctx.Done():
 		// The context was canceled (e.g., timeout).
 		return ctx.Err()
 
-	// 3. The correct syntax for waiting and receiving the result:
 	case resultBytes, ok := <-updateChan:
 		if !ok {
 			// Channel closed unexpectedly without a result.
 			return fmt.Errorf("result watcher channel closed unexpectedly")
 		}
 
-		// Now, execute the original deserialization and error checking logic
-		// using the received resultBytes.
-
 		// Predefined convention: The workflow result contains [result, error] array
+		// TODO: re-consider design choices
 		var resultArray []any
 		if err := w.converter.DeserializeBinary(resultBytes, &resultArray); err != nil {
 			return fmt.Errorf("result deserialization failed: %w", err)

@@ -59,6 +59,10 @@ func NewManager(ctx context.Context, cfg jetstreamx.Config, serde serde.BinarySe
 	return m, nil
 }
 
+// TODO: Graceful HTTP shutdown
+// TODO Shutdown error logging
+// TODO:  Startup verification
+// TODO: Resource cleanup guarantees
 func (m *Manager) Run(ctx context.Context) error {
 	g, gCtx := errgroup.WithContext(ctx)
 

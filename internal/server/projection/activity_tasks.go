@@ -60,15 +60,15 @@ func ActivityTasks(ctx context.Context, conn *jetstreamx.Connection, conv serde.
 		switch e := event.(type) {
 		case *api.ActivityScheduled:
 			task := api.ActivityTask{
-				WorkflowFn:               e.WorkflowFnName,
-				WorkflowID:               string(e.ID),
-				ActivityFn:               e.ActivityFnName,
-				Input:                    e.Input,
-				Attempt:                  1, // First attempt
-				ScheduleToCloseTimeoutMs: e.ScheduleToCloseTimeoutMs,
-				StartToCloseTimeoutMs:    e.StartToCloseTimeoutMs,
-				RetryPolicy:              e.RetryPolicy,
-				ScheduledAtMs:            time.Now().UnixMilli(),
+				WorkflowFn:                 e.WorkflowFnName,
+				WorkflowID:                 string(e.ID),
+				ActivityFn:                 e.ActivityFnName,
+				Input:                      e.Input,
+				Attempt:                    1, // First attempt
+				ScheduleToCloseTimeoutUnix: e.ScheduleToCloseTimeoutUnix,
+				StartToCloseTimeoutUnix:    e.StartToCloseTimeoutUnix,
+				RetryPolicy:                e.RetryPolicy,
+				ScheduledAtMs:              time.Now().UnixMilli(),
 			}
 
 			// Use the provided BinarySerde instead of hardcoded JSON

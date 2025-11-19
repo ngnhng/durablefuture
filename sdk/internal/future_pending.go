@@ -20,7 +20,6 @@ import (
 	"log/slog"
 
 	"github.com/ngnhng/durablefuture/api/serde"
-	"github.com/ngnhng/durablefuture/sdk/internal/utils"
 )
 
 var _ Future = (*pending)(nil)
@@ -47,7 +46,7 @@ func (f *pending) Get(ctx context.Context, resultPtr any) error {
 	}
 	if resultPtr != nil && f.value != nil {
 
-		f.loggerOrDefault().Debug("activity future resolved", "values", utils.DebugAnyValues(f.value))
+		f.loggerOrDefault().Debug("activity future resolved", "values", debugAnyValues(f.value))
 
 		// Check if we have both result and error parts
 		if len(f.value) != 2 {

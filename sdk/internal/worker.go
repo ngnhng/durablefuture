@@ -30,7 +30,6 @@ import (
 	"github.com/DeluxeOwl/chronicle/eventlog"
 	"github.com/ngnhng/durablefuture/api"
 	"github.com/ngnhng/durablefuture/api/serde"
-	"github.com/ngnhng/durablefuture/sdk/internal/utils"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -120,7 +119,7 @@ func NewWorker(c Client, opts *WorkerOptions) (*workerImpl, error) {
 }
 
 func (w *workerImpl) RegisterWorkflow(fn any, options ...WorkflowRegisterOption) error {
-	fnName, err := utils.ExtractFullFunctionName(fn)
+	fnName, err := extractFullFunctionName(fn)
 	if err != nil {
 		return err
 	}
@@ -134,7 +133,7 @@ func (w *workerImpl) RegisterWorkflow(fn any, options ...WorkflowRegisterOption)
 }
 
 func (w *workerImpl) RegisterActivity(fn any, opts ...ActivityRegisterOption) error {
-	fnName, err := utils.ExtractFullFunctionName(fn)
+	fnName, err := extractFullFunctionName(fn)
 	if err != nil {
 		return err
 	}
@@ -166,7 +165,7 @@ func (w *workerImpl) Run(ctx context.Context) error {
 	g, gCtx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
-		// The processing loop now manages its own group of goroutines for each task.
+		// The processing loop manages its own group of goroutines for each task.
 		return w.runProcessingLoop(gCtx)
 	})
 
@@ -174,11 +173,11 @@ func (w *workerImpl) Run(ctx context.Context) error {
 }
 
 func (w *workerImpl) runProcessingLoop(ctx context.Context) error {
-	// Pass the serializer to Chronicle so it uses MessagePack (or whatever serde is configured)
 	repo, err := chronicle.NewEventSourcedRepository(
 		w.evtLog,
 		NewEmptyWorkflowContext,
 		nil,
+		// Pass the serializer to Chronicle so it uses MessagePack (or whatever serde is configured)
 		aggregate.EventSerializer(w.converter),
 	)
 	if err != nil {
@@ -347,10 +346,10 @@ func (w *workerImpl) evaluateRetryDecision(task *api.ActivityTask, err error) bo
 	}
 
 	// Check if schedule-to-close timeout would be exceeded
-	if task.ScheduleToCloseTimeoutMs > 0 {
+	if task.ScheduleToCloseTimeoutUnix > 0 {
 		elapsedMs := time.Now().UnixMilli() - task.ScheduledAtMs
 		nextDelay := w.calculateRetryDelay(task)
-		if elapsedMs+nextDelay.Milliseconds() > task.ScheduleToCloseTimeoutMs {
+		if elapsedMs+nextDelay.Milliseconds() > task.ScheduleToCloseTimeoutUnix {
 			w.logger.Info("schedule-to-close timeout would be exceeded for activity", "activity", task.ActivityFn)
 			return false
 		}

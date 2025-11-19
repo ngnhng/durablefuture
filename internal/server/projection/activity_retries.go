@@ -76,6 +76,7 @@ func ActivityRetries(ctx context.Context, conn *jetstreamx.Connection, conv serd
 
 			// Spawn a goroutine to handle the delayed retry so we don't block the consumer
 			go func() {
+				// TODO: temporary
 				time.Sleep(retryDelay)
 
 				// We need to get the full activity task context from the workflow history
@@ -96,6 +97,7 @@ func ActivityRetries(ctx context.Context, conn *jetstreamx.Connection, conv serd
 					return
 				}
 
+				// TODO: stop hardcoding shit
 				taskSubject := fmt.Sprintf("activity.%s.tasks", strings.Split(string(e.ID), ".")[0])
 				msgID := fmt.Sprintf("actask-retry-%s-%d-%d", e.ID, e.Attempt+1, time.Now().UnixNano())
 
@@ -182,14 +184,14 @@ func fetchActivityTaskFromHistory(ctx context.Context, conn *jetstreamx.Connecti
 
 	// Reconstruct the activity task with updated attempt
 	return &api.ActivityTask{
-		WorkflowFn:               retryEvent.WorkflowFnName,
-		WorkflowID:               string(retryEvent.ID),
-		ActivityFn:               retryEvent.ActivityFnName,
-		Input:                    scheduledEvent.Input,
-		Attempt:                  retryEvent.Attempt + 1,
-		ScheduleToCloseTimeoutMs: scheduledEvent.ScheduleToCloseTimeoutMs,
-		StartToCloseTimeoutMs:    scheduledEvent.StartToCloseTimeoutMs,
-		RetryPolicy:              scheduledEvent.RetryPolicy,
-		ScheduledAtMs:            scheduledTime.UnixMilli(),
+		WorkflowFn:                 retryEvent.WorkflowFnName,
+		WorkflowID:                 string(retryEvent.ID),
+		ActivityFn:                 retryEvent.ActivityFnName,
+		Input:                      scheduledEvent.Input,
+		Attempt:                    retryEvent.Attempt + 1,
+		ScheduleToCloseTimeoutUnix: scheduledEvent.ScheduleToCloseTimeoutUnix,
+		StartToCloseTimeoutUnix:    scheduledEvent.StartToCloseTimeoutUnix,
+		RetryPolicy:                scheduledEvent.RetryPolicy,
+		ScheduledAtMs:              scheduledTime.UnixMilli(),
 	}, nil
 }

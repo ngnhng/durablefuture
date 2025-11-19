@@ -49,16 +49,16 @@ type (
 	}
 
 	ActivityTask struct {
-		WorkflowFn               string       `json:"wf_name"`
-		WorkflowID               string       `json:"wf_id"`
-		ActivityFn               string       `json:"ac_name"`
-		Input                    []any        `json:"input"`
-		LastSeq                  int          `json:"last_seq"`
-		Attempt                  int32        `json:"attempt"`
-		ScheduleToCloseTimeoutMs int64        `json:"schedule_to_close_timeout_ms,omitempty"`
-		StartToCloseTimeoutMs    int64        `json:"start_to_close_timeout_ms,omitempty"`
-		RetryPolicy              *RetryPolicy `json:"retry_policy,omitempty"`
-		ScheduledAtMs            int64        `json:"scheduled_at_ms,omitempty"` // timestamp when first scheduled
+		WorkflowFn                 string       `json:"wf_name"`
+		WorkflowID                 string       `json:"wf_id"`
+		ActivityFn                 string       `json:"ac_name"`
+		Input                      []any        `json:"input"`
+		LastSeq                    int          `json:"last_seq"`
+		Attempt                    int32        `json:"attempt"`
+		ScheduleToCloseTimeoutUnix int64        `json:"schedule_to_close_timeout_ms,omitempty"`
+		StartToCloseTimeoutUnix    int64        `json:"start_to_close_timeout_ms,omitempty"`
+		RetryPolicy                *RetryPolicy `json:"retry_policy,omitempty"`
+		ScheduledAtMs              int64        `json:"scheduled_at_ms,omitempty"` // timestamp when first scheduled
 	}
 )
 

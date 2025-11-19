@@ -26,7 +26,7 @@ import (
 )
 
 // WorkflowResults updates the result KV bucket when workflows complete.
-func WorkflowResults(ctx context.Context, conn *jetstreamx.Connection, conv serde.BinarySerde) error {
+func WorkflowResults(ctx context.Context, conn *jetstreamx.Connection, serder serde.BinarySerde) error {
 	consumer, err := conn.EnsureConsumer(ctx, api.WorkflowHistoryStream, jetstream.ConsumerConfig{
 		Durable:       api.WorkflowResultProjectorConsumer,
 		DeliverPolicy: jetstream.DeliverAllPolicy,
@@ -38,7 +38,7 @@ func WorkflowResults(ctx context.Context, conn *jetstreamx.Connection, conv serd
 	}
 
 	cc, err := consumer.Consume(func(msg jetstream.Msg) {
-		event, err := decodeWorkflowEvent(msg, conv)
+		event, err := decodeWorkflowEvent(msg, serder)
 		if err != nil {
 			slog.Info(fmt.Sprintf("PROJECTOR/WF_RESULT: could not decode event, terminating: %v", err))
 			msg.Term()
@@ -48,10 +48,10 @@ func WorkflowResults(ctx context.Context, conn *jetstreamx.Connection, conv serd
 
 		switch e := event.(type) {
 		case *api.WorkflowCompleted:
-			result, _ := conv.SerializeBinary(e.Result)
+			result, _ := serder.SerializeBinary(e.Result)
 			slog.Info(fmt.Sprintf("PROJECTOR/WF_RESULT: updating KV: %v - %v", e.ID, string(result)))
 			if _, err := conn.Set(ctx, api.WorkflowResultBucket, string(e.ID), result); err != nil {
-				slog.Error("PROJECTOR/WF_RESULT: failed to set workflow result", "workflow_id", e.ID, "error", err)
+				slog.ErrorContext(ctx, "PROJECTOR/WF_RESULT: failed to set workflow result", "workflow_id", e.ID, "error", err)
 				msg.Nak()
 				return
 			}
@@ -64,6 +64,6 @@ func WorkflowResults(ctx context.Context, conn *jetstreamx.Connection, conv serd
 
 	<-ctx.Done()
 	cc.Stop()
-	slog.Debug("Workflow result projector stopped.")
+	slog.InfoContext(ctx, "Workflow result projector stopped.")
 	return nil
 }

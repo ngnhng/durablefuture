@@ -54,12 +54,12 @@ func (*WorkflowStarted) isWorkflowEvent()  {}
 type ActivityScheduled struct {
 	ID WorkflowID `json:"id"`
 
-	WorkflowFnName           string       `json:"wf_name"`
-	ActivityFnName           string       `json:"name"`
-	Input                    []any        `json:"input"`
-	ScheduleToCloseTimeoutMs int64        `json:"schedule_to_close_timeout_ms,omitempty"`
-	StartToCloseTimeoutMs    int64        `json:"start_to_close_timeout_ms,omitempty"`
-	RetryPolicy              *RetryPolicy `json:"retry_policy,omitempty"`
+	WorkflowFnName             string       `json:"wf_name"`
+	ActivityFnName             string       `json:"name"`
+	Input                      []any        `json:"input"`
+	ScheduleToCloseTimeoutUnix int64        `json:"schedule_to_close_timeout_unix,omitempty"`
+	StartToCloseTimeoutUnix    int64        `json:"start_to_close_timeout_ms,omitempty"`
+	RetryPolicy                *RetryPolicy `json:"retry_policy,omitempty"`
 }
 
 func (*ActivityScheduled) EventName() string { return "activity/scheduled" }
