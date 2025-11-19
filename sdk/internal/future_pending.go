@@ -33,7 +33,7 @@ type pending struct {
 	isResolved bool
 	value      []any
 	err        error
-	converter  serde.BinarySerde // for serialization-agnostic type conversion
+	converter  serde.BinarySerde
 	logger     *slog.Logger
 }
 

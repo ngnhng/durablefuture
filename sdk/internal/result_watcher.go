@@ -23,7 +23,7 @@ import (
 )
 
 // Watch implements internal.WorkflowResultWatcher.
-func (c *Conn) Watch(ctx context.Context, workflowID string) ([]byte, error) {
+func (c *sdkNATSConnection) Watch(ctx context.Context, workflowID string) ([]byte, error) {
 	watcher, err := c.WatchKV(ctx, api.WorkflowResultBucket, workflowID)
 	if err != nil {
 		return nil, fmt.Errorf("could not start KV watcher for key '%s': %w", workflowID, err)

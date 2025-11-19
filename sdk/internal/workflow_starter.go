@@ -24,7 +24,7 @@ import (
 )
 
 // ExecuteWorkflow implements internal.WorkflowExecutor.
-func (c *Conn) StartWorkflow(ctx context.Context, attrs *api.StartWorkflowAttributes) (*api.StartWorkflowReply, error) {
+func (c *sdkNATSConnection) StartWorkflow(ctx context.Context, attrs *api.StartWorkflowAttributes) (*api.StartWorkflowReply, error) {
 	attrsBytes, err := c.converter.SerializeBinary(attrs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to serialize start workflow attributes: %w", err)

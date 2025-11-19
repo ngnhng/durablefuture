@@ -75,8 +75,8 @@ func (i *idManager) ActivityTaskFilterSubject() string {
 	return fmt.Sprintf("%s.%s.*.%s", i.ns, "tasks", "activity")
 }
 
-// Conn represents a NATS connection with JetStream capabilities tailored for the SDK.
-type Conn struct {
+// sdkNATSConnection represents a NATS connection with JetStream capabilities tailored for the SDK.
+type sdkNATSConnection struct {
 	nc        *nats.Conn
 	js        jetstream.JetStream
 	converter serde.BinarySerde
@@ -85,35 +85,35 @@ type Conn struct {
 	logger *slog.Logger
 }
 
-func from(nc *nats.Conn, namespace string, conv serde.BinarySerde) (*Conn, error) {
+func from(nc *nats.Conn, namespace string, conv serde.BinarySerde) (*sdkNATSConnection, error) {
 	js, err := jetstream.New(nc)
 	if err != nil {
 		nc.Close()
 		return nil, fmt.Errorf("failed to create JetStream context: %w", err)
 	}
-	namespace = strings.TrimSpace(namespace)
 	if conv == nil {
-		conv = &serde.MsgpackSerde{} // Default to MessagePack for better performance
+		panic("must specify serde")
 	}
-	return &Conn{
+
+	return &sdkNATSConnection{
 		nc:                nc,
 		js:                js,
 		converter:         conv,
-		IdentifierManager: &idManager{ns: namespace},
+		IdentifierManager: &idManager{ns: strings.TrimSpace(namespace)},
 	}, nil
 }
 
-func (c *Conn) Close() {
+func (c *sdkNATSConnection) Close() {
 	if c.nc != nil && !c.nc.IsClosed() {
 		c.nc.Close()
 	}
 }
 
-func (c *Conn) SetLogger(l *slog.Logger) {
+func (c *sdkNATSConnection) SetLogger(l *slog.Logger) {
 	c.logger = defaultLogger(l)
 }
 
-func (c *Conn) Logger() *slog.Logger {
+func (c *sdkNATSConnection) Logger() *slog.Logger {
 	if c == nil {
 		return slog.Default()
 	}
@@ -121,7 +121,7 @@ func (c *Conn) Logger() *slog.Logger {
 }
 
 // JS returns the JetStream context associated with the NATS connection.
-func (c *Conn) JS() (jetstream.JetStream, error) {
+func (c *sdkNATSConnection) JS() (jetstream.JetStream, error) {
 	if c.js == nil {
 		return nil, fmt.Errorf("JetStream context is not initialized")
 	}
@@ -129,12 +129,12 @@ func (c *Conn) JS() (jetstream.JetStream, error) {
 }
 
 // NATS returns the underlying NATS connection.
-func (c *Conn) NATS() *nats.Conn {
+func (c *sdkNATSConnection) NATS() *nats.Conn {
 	return c.nc
 }
 
 // IsConnected returns whether the NATS connection is currently connected.
-func (c *Conn) IsConnected() bool {
+func (c *sdkNATSConnection) IsConnected() bool {
 	return c.nc != nil && c.nc.IsConnected()
 }
 
@@ -151,7 +151,7 @@ type Config interface {
 }
 
 // Connect establishes a connection to NATS with the given configuration.
-func Connect(cfg Config, namespace string, conv serde.BinarySerde) (*Conn, error) {
+func Connect(cfg Config, namespace string, conv serde.BinarySerde) (*sdkNATSConnection, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("natz: nil config provided")
 	}
@@ -189,7 +189,7 @@ func Connect(cfg Config, namespace string, conv serde.BinarySerde) (*Conn, error
 	return conn, nil
 }
 
-func wrapExisting(nc *nats.Conn, namespace string, conv serde.BinarySerde) (*Conn, error) {
+func wrapExisting(nc *nats.Conn, namespace string, conv serde.BinarySerde) (*sdkNATSConnection, error) {
 	if nc == nil {
 		return nil, fmt.Errorf("natz: nil connection provided")
 	}
@@ -197,7 +197,7 @@ func wrapExisting(nc *nats.Conn, namespace string, conv serde.BinarySerde) (*Con
 }
 
 // EnsureKV ensures that a KeyValue store with the given configuration exists.
-func (c *Conn) EnsureKV(ctx context.Context, cfg jetstream.KeyValueConfig) (jetstream.KeyValue, error) {
+func (c *sdkNATSConnection) EnsureKV(ctx context.Context, cfg jetstream.KeyValueConfig) (jetstream.KeyValue, error) {
 	kv, err := c.js.KeyValue(ctx, cfg.Bucket)
 	if err != nil || kv == nil {
 		if errors.Is(err, jetstream.ErrBucketNotFound) {
@@ -219,7 +219,7 @@ func (c *Conn) EnsureKV(ctx context.Context, cfg jetstream.KeyValueConfig) (jets
 }
 
 // EnsureStream ensures that a stream with the given configuration exists.
-func (c *Conn) EnsureStream(ctx context.Context, cfg jetstream.StreamConfig) (jetstream.Stream, error) {
+func (c *sdkNATSConnection) EnsureStream(ctx context.Context, cfg jetstream.StreamConfig) (jetstream.Stream, error) {
 	stream, err := c.js.Stream(ctx, cfg.Name)
 	if err != nil || stream == nil {
 		if errors.Is(err, jetstream.ErrStreamNotFound) {
@@ -250,7 +250,7 @@ func (c *Conn) EnsureStream(ctx context.Context, cfg jetstream.StreamConfig) (je
 }
 
 // EnsureConsumer ensures that a consumer with the given configuration exists on the specified stream.
-func (c *Conn) EnsureConsumer(ctx context.Context, streamName string, cfg jetstream.ConsumerConfig) (jetstream.Consumer, error) {
+func (c *sdkNATSConnection) EnsureConsumer(ctx context.Context, streamName string, cfg jetstream.ConsumerConfig) (jetstream.Consumer, error) {
 	stream, err := c.js.Stream(ctx, streamName)
 	if err != nil || stream == nil {
 		return nil, fmt.Errorf("failed to get stream %s for consumer creation: %w", streamName, err)
@@ -267,7 +267,7 @@ func (c *Conn) EnsureConsumer(ctx context.Context, streamName string, cfg jetstr
 }
 
 // Publish publishes a message to a subject using basic NATS.
-func (c *Conn) Publish(ctx context.Context, subj string, data []byte) error {
+func (c *sdkNATSConnection) Publish(ctx context.Context, subj string, data []byte) error {
 	if err := c.nc.Publish(subj, data); err != nil {
 		return fmt.Errorf("failed to publish message to subject %s: %w", subj, err)
 	}
@@ -275,7 +275,7 @@ func (c *Conn) Publish(ctx context.Context, subj string, data []byte) error {
 }
 
 // PublishJS publishes a message to a JetStream subject and waits for acknowledgement.
-func (c *Conn) PublishJS(ctx context.Context, subj string, data []byte, opts ...jetstream.PublishOpt) (*jetstream.PubAck, error) {
+func (c *sdkNATSConnection) PublishJS(ctx context.Context, subj string, data []byte, opts ...jetstream.PublishOpt) (*jetstream.PubAck, error) {
 	ack, err := c.js.Publish(ctx, subj, data, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to publish JetStream message to subject %s: %w", subj, err)
@@ -284,7 +284,7 @@ func (c *Conn) PublishJS(ctx context.Context, subj string, data []byte, opts ...
 }
 
 // QueueSubscribe creates a queue subscription to a subject using basic NATS.
-func (c *Conn) QueueSubscribe(subj, queue string, handler nats.MsgHandler) (*nats.Subscription, error) {
+func (c *sdkNATSConnection) QueueSubscribe(subj, queue string, handler nats.MsgHandler) (*nats.Subscription, error) {
 	sub, err := c.nc.QueueSubscribe(subj, queue, handler)
 	if err != nil {
 		return nil, fmt.Errorf("failed to queue subscribe to subject %s with queue %s: %w", subj, queue, err)
@@ -293,7 +293,7 @@ func (c *Conn) QueueSubscribe(subj, queue string, handler nats.MsgHandler) (*nat
 }
 
 // FetchMessages fetches a batch of messages from a consumer.
-func (c *Conn) FetchMessages(ctx context.Context, consumer jetstream.Consumer, batchSize int, opts ...jetstream.FetchOpt) (jetstream.MessageBatch, error) {
+func (c *sdkNATSConnection) FetchMessages(ctx context.Context, consumer jetstream.Consumer, batchSize int, opts ...jetstream.FetchOpt) (jetstream.MessageBatch, error) {
 	msgs, err := consumer.Fetch(batchSize, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch %d messages: %w", batchSize, err)
@@ -302,7 +302,7 @@ func (c *Conn) FetchMessages(ctx context.Context, consumer jetstream.Consumer, b
 }
 
 // WatchKV creates a watcher for a given key or key pattern within a bucket.
-func (c *Conn) WatchKV(ctx context.Context, bucket, key string, opts ...jetstream.WatchOpt) (jetstream.KeyWatcher, error) {
+func (c *sdkNATSConnection) WatchKV(ctx context.Context, bucket, key string, opts ...jetstream.WatchOpt) (jetstream.KeyWatcher, error) {
 	kv, err := c.js.KeyValue(ctx, bucket)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get KV bucket '%s': %w", bucket, err)
@@ -317,7 +317,7 @@ func (c *Conn) WatchKV(ctx context.Context, bucket, key string, opts ...jetstrea
 }
 
 // Set stores a key-value pair in the specified bucket.
-func (c *Conn) Set(ctx context.Context, bucket, key string, value []byte) (uint64, error) {
+func (c *sdkNATSConnection) Set(ctx context.Context, bucket, key string, value []byte) (uint64, error) {
 	kv, err := c.js.KeyValue(ctx, bucket)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get KV bucket '%s': %w", bucket, err)
@@ -331,7 +331,7 @@ func (c *Conn) Set(ctx context.Context, bucket, key string, value []byte) (uint6
 }
 
 // Get retrieves a key-value entry from the specified bucket.
-func (c *Conn) Get(ctx context.Context, bucket, key string) (jetstream.KeyValueEntry, error) {
+func (c *sdkNATSConnection) Get(ctx context.Context, bucket, key string) (jetstream.KeyValueEntry, error) {
 	kv, err := c.js.KeyValue(ctx, bucket)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get KV bucket '%s': %w", bucket, err)

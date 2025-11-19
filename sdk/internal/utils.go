@@ -18,6 +18,9 @@ import (
 	"fmt"
 	"reflect"
 	"runtime"
+	"strings"
+
+	"github.com/ngnhng/durablefuture/api"
 )
 
 // extractFullFunctionName extracts the function's name with the preceding packages details.
@@ -49,4 +52,28 @@ func debugAnyValues(vals []any) string {
 		}
 	}
 	return result
+}
+
+func reflectValuesToAny(vals []reflect.Value) []any {
+	anySlice := make([]any, len(vals))
+	for i, v := range vals {
+		anySlice[i] = v.Interface()
+	}
+	return anySlice
+}
+
+func buildHistoryStreamName(opts *WorkerOptions) string {
+	if opts == nil {
+		return api.WorkflowHistoryStream
+	}
+
+	var parts []string
+	if opts.TenantID != "" {
+		parts = append(parts, opts.TenantID)
+	}
+	if opts.Namespace != "" {
+		parts = append(parts, opts.Namespace)
+	}
+	parts = append(parts, api.WorkflowHistoryStream)
+	return strings.Join(parts, "_")
 }

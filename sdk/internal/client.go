@@ -36,7 +36,7 @@ type (
 		// ExecuteWorkflow starts a workflow execution.
 		ExecuteWorkflow(ctx context.Context, workflowFn any, input ...any) (Future, error)
 		// Accessors to underlying components, not exposed for public consumption
-		getConn() *Conn
+		getConn() *sdkNATSConnection
 		getSerde() serde.BinarySerde
 		getLogger() *slog.Logger
 	}
@@ -54,7 +54,7 @@ type clientImpl struct {
 	converter serde.BinarySerde
 	logger    *slog.Logger
 	options   *ClientOptions
-	nc        *Conn
+	nc        *sdkNATSConnection
 }
 
 func NewClient(options *ClientOptions) (Client, error) {
@@ -107,6 +107,6 @@ func (c *clientImpl) ExecuteWorkflow(ctx context.Context, workflowFn any, input 
 	return NewExecution(c, c.getConn(), c.converter, workflowId), nil
 }
 
-func (c *clientImpl) getConn() *Conn              { return c.nc }
+func (c *clientImpl) getConn() *sdkNATSConnection { return c.nc }
 func (c *clientImpl) getSerde() serde.BinarySerde { return c.converter }
 func (c *clientImpl) getLogger() *slog.Logger     { return c.logger }

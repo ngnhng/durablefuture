@@ -1,13 +1,9 @@
 resources:
-  - name: DurableFuture
+  - name: DurableFuture Backend
     subtitle: Workflow Orchestration Platform
     description: Temporal-inspired deterministic workflows on NATS JetStream
     color: "#0B7285"
     children:
-      - name: Dashboard
-        subtitle: frontend/app
-        description: Web console visualizing runs
-        icon: Azure/General/Shared Dashboard.svg
       - name: Server
         subtitle: cmd/durablefuture-server
         description: Handles commands, ensures JetStream resources, spawns projectors
@@ -31,24 +27,14 @@ resources:
               - name: ActivityTasks Projector
                 subtitle: activity_tasks.go
                 description: Publishes activity.<fn>.tasks when ActivityScheduled occurs
+
               - name: WorkflowResults Projector
                 subtitle: workflow_results.go
                 description: Writes WorkflowCompleted payloads into workflow-result KV
+
               - name: ActivityRetries Projector
                 subtitle: activity_retries.go
                 description: Repairs failed activities based on retry policy
-
-      - name: Workers
-        style: flat
-        subtitle: Runtime Processes
-        children:
-          - name: Workflow Worker
-            subtitle: workflow-worker container
-            description: Replays history via Chronicle and runs workflow code
-
-          - name: Activity Worker
-            subtitle: activity-worker container
-            description: Executes non-deterministic functions with retry policies
 
       - name: NATS JetStream
         subtitle: Durable Messaging
@@ -84,25 +70,57 @@ resources:
             subtitle: KV bucket
             description: Status + visibility data surfaced in the console
 
-  - name: Your Application
+  - name: Your System
     color: Green
     children:
-      - name: Client SDK
-        subtitle: pkg/client-sdk
-        description: Public API for starting workflows, executing activities, and resolving futures
-        color: Green
+      - name: Dashboard
+        subtitle: frontend/app
+        description: Optional Vite + React console visualizing runs
+        icon: Azure/General/Shared Dashboard.svg
+      - name: DurableFuture Workers
+        style: flat
+        subtitle: Runtime Processes
         children:
-          - name: Workflow API
-            subtitle: sdk/workflow
-            description: Deterministic workflow context + ExecuteActivity helpers
+          - name: Workflow Worker
+            subtitle: workflow-worker container
+            description: Replays history via Chronicle and runs workflow code
+            children:
+              - name: Workflow Business Logic
+              - name: Workflow SDK
+                instanceOf: Client SDK
+                children:
+                  - name: Workflow API
+                    subtitle: sdk/workflow
+                    description: Deterministic workflow context + ExecuteActivity helpers
+                  - name: Workflow Worker Runtime
 
-          - name: Activity API
-            subtitle: sdk/activity
-            description: Activity registration and handler plumbing
+          - name: Activity Worker
+            subtitle: activity-worker container
+            description: Executes non-deterministic functions with retry policies
+            children:
+              - name: Activity Business Logic
+              - name: Activity SDK
+                instanceOf: Client SDK
+                children:
+                  - name: Activity API
+                    subtitle: sdk/activity
+                    description: Activity registration and handler plumbing
+                  - name: Activity Worker Runtime
 
-          - name: Worker Runtime
-            subtitle: sdk/worker
-            description: Runs workflow/activity workers and hosts Chronicle replay
+      - name: Your Application
+        children:
+          - name: Client API
+            instanceOf: Client SDK
+
+  - name: Client SDK
+    abstract: true
+    color: GreenYellow
+    subtitle: pkg/client-sdk
+    description: Public API for starting workflows, executing activities, and resolving futures
+    children:
+      - name: Worker Runtime
+        subtitle: sdk/worker
+        description: Runs workflow/activity workers and hosts Chronicle replay
 
   - name: DurableFuture Codebase
     subtitle: Repository Modules
@@ -112,25 +130,31 @@ resources:
       - name: API Contracts
         subtitle: api/events.go, api/types.go
         description: Shared structs imported by SDK + server
+
       - name: SDK Internals
         subtitle: sdk/internal/**
         description: Replay engine, futures, pending activity cache
         children:
           - name: Activity Replay Engine
             subtitle: sdk/internal/activity_replay.go
+
           - name: Future Pending Cache
             subtitle: sdk/internal/future_pending.go
+
           - name: Context Propagation
             subtitle: sdk/internal/context.go
+
       - name: Server Infra
         subtitle: internal/server/infra/jetstream
         description: JetStream connection helpers and consumer utilities
+
       - name: Examples
         subtitle: examples/scenarios/*
         description: Runnable scenarios (order, order-retries, recovery, etc.)
         children:
           - name: Order Workflow
             subtitle: examples/scenarios/order/order.go
+
           - name: Order Retries
             subtitle: examples/scenarios/order-retries/order_retries.go
 
@@ -138,7 +162,7 @@ perspectives:
   - name: Deployment
     color: SteelBlue
     relations:
-      - from: Client SDK
+      - from: Client API
         to: Command Handler
         label: Publish command.request.start
       - from: Manager Loop
@@ -150,19 +174,19 @@ perspectives:
       - from: WorkflowTasks Projector
         to: WORKFLOW_TASKS
         label: Publish workflow.<id>.tasks
-      - from: Workflow Worker
+      - from: Workflow SDK
         to: WORKFLOW_TASKS
         label: Consume & replay
-      - from: Workflow Worker
+      - from: Workflow SDK
         to: WORKFLOW_HISTORY
         label: Emit ActivityScheduled
       - from: ActivityTasks Projector
         to: ACTIVITY_TASKS
         label: Publish activity.<fn>.tasks
-      - from: Activity Worker
+      - from: Activity SDK
         to: ACTIVITY_TASKS
         label: Consume + execute
-      - from: Activity Worker
+      - from: Activity SDK
         to: Command Handler
         label: Report completion/failure
       - from: Command Handler
@@ -171,7 +195,7 @@ perspectives:
       - from: WorkflowResults Projector
         to: workflow-result
         label: Store final payload
-      - from: Client SDK
+      - from: Client API
         to: workflow-result
         label: Watch for result
       - from: Dashboard
@@ -181,9 +205,9 @@ perspectives:
   - name: Deterministic Execution Flow
     color: Firebrick
     sequence:
-      start: Client SDK
+      start: Client API
       steps:
-        - to: Client SDK
+        - to: Client API
           label: ExecuteWorkflow()
           description: SDK serializes StartWorkflow command
         - to: Command Handler
@@ -216,7 +240,7 @@ perspectives:
           label: Materialize result
         - to: workflow-result
           label: Put workflow-result/<id>
-        - to: Client SDK
+        - to: Client API
           label: Future resolves to caller
 
   - name: Reliability & Retry
@@ -231,7 +255,7 @@ perspectives:
       - from: Activity Worker
         to: WORKFLOW_HISTORY
         label: Append ActivityFailed w/ retry state
-      - from: Worker Runtime
+      - from: Activity Worker Runtime
         to: Activity Replay Engine
         label: Chronicle replay decisions
       - from: Manager Loop

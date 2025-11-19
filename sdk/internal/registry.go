@@ -20,29 +20,19 @@ import (
 	"sync"
 )
 
-type registry interface {
-	get(k string) (any, error)
-	set(k string, v any) error
-	size() int64
-}
-
-func NewInMemoryRegistry() registry {
-	return newInMemoryRegistry()
-}
-
-func newInMemoryRegistry() *MapRegistry {
-	return &MapRegistry{
+func newInMemoryRegistry() *hashMapRegistry {
+	return &hashMapRegistry{
 		entries: make(map[string]any),
 	}
 }
 
-type MapRegistry struct {
+type hashMapRegistry struct {
 	mu      sync.RWMutex
 	entries map[string]any
 }
 
 // Get retrieves the value for the key. No mutex since MapRegistry is only initialized during init.
-func (m *MapRegistry) get(k string) (any, error) {
+func (m *hashMapRegistry) get(k string) (any, error) {
 	entry, ok := m.entries[k]
 	if !ok {
 		return nil, fmt.Errorf("key %v have no value", k)
@@ -51,7 +41,7 @@ func (m *MapRegistry) get(k string) (any, error) {
 	return entry, nil
 }
 
-func (m *MapRegistry) set(k string, v any) error {
+func (m *hashMapRegistry) set(k string, v any) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -70,6 +60,6 @@ func (m *MapRegistry) set(k string, v any) error {
 	return nil
 }
 
-func (m *MapRegistry) size() int64 {
+func (m *hashMapRegistry) size() int64 {
 	return int64(len(m.entries))
 }

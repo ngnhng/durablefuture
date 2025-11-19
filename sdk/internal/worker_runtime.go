@@ -22,7 +22,6 @@ import (
 	"math"
 	"reflect"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/DeluxeOwl/chronicle"
@@ -33,52 +32,65 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+// --- task processor: worker runtime processing nats incoming messages ---
+type taskProcessor interface {
+	ReceiveTask(ctx context.Context, includeWorkflow, includeActivity bool) (iter.Seq[*taskToken], error)
+}
+
+var _ taskProcessor = (*worker)(nil)
+
+// --- kv store ----
+type kv interface {
+	get(k string) (any, error)
+	set(k string, v any) error
+	size() int64
+}
+
+// --- workflow registry ---
 type (
-	TaskToken struct {
-		Task api.Task
-		Ack  func(context.Context) error
-		Nak  func(context.Context) error
-		Term func(context.Context) error
-	}
-
-	TaskProcessor interface {
-		ReceiveTask(ctx context.Context, includeWorkflow, includeActivity bool) (iter.Seq[*TaskToken], error)
-	}
-
-	WorkerOptions struct {
-		TenantID  string
-		Namespace string
-		Logger    *slog.Logger
-	}
-
-	ActivityRegisterOption struct{}
-
 	WorkflowRegisterOption struct{}
 
 	WorkflowRegistry interface {
 		RegisterWorkflow(w any, options ...WorkflowRegisterOption) error
 	}
+)
+
+var _ WorkflowRegistry = (*worker)(nil)
+
+// --- activity registry ---
+type (
+	ActivityRegisterOption struct{}
 
 	ActivityRegistry interface {
 		RegisterActivity(a any, options ...ActivityRegisterOption) error
 	}
 )
-type workerImpl struct {
+
+var _ ActivityRegistry = (*worker)(nil)
+
+// --- concrete implementation of the registries and task processor ---
+type WorkerOptions struct {
+	TenantID  string
+	Namespace string
+	Logger    *slog.Logger
+}
+type worker struct {
 	c Client
 
 	converter     serde.BinarySerde
-	typeConverter *serde.TypeConverter // for serialization-agnostic type conversion
+	typeConverter *serde.TypeConverter
 
-	TaskProcessor
+	// the sdk nats connection implements this
+	taskProcessor
 
-	workflowRegistry registry
-	activityRegistry registry
+	workflowRegistry kv
+	activityRegistry kv
 
 	evtLog *eventlog.NATS
 	logger *slog.Logger
 }
 
-func NewWorker(c Client, opts *WorkerOptions) (*workerImpl, error) {
+func NewWorker(c Client, opts *WorkerOptions) (*worker, error) {
 	if opts == nil {
 		opts = &WorkerOptions{}
 	}
@@ -106,19 +118,19 @@ func NewWorker(c Client, opts *WorkerOptions) (*workerImpl, error) {
 	}
 
 	conv := c.getSerde()
-	return &workerImpl{
+	return &worker{
 		c:                c,
 		converter:        conv,
 		typeConverter:    serde.NewTypeConverter(conv),
-		TaskProcessor:    c.getConn(),
+		taskProcessor:    c.getConn(),
 		evtLog:           log,
-		workflowRegistry: NewInMemoryRegistry(),
-		activityRegistry: NewInMemoryRegistry(),
+		workflowRegistry: newInMemoryRegistry(),
+		activityRegistry: newInMemoryRegistry(),
 		logger:           logger,
 	}, nil
 }
 
-func (w *workerImpl) RegisterWorkflow(fn any, options ...WorkflowRegisterOption) error {
+func (w *worker) RegisterWorkflow(fn any, options ...WorkflowRegisterOption) error {
 	fnName, err := extractFullFunctionName(fn)
 	if err != nil {
 		return err
@@ -132,7 +144,7 @@ func (w *workerImpl) RegisterWorkflow(fn any, options ...WorkflowRegisterOption)
 	return nil
 }
 
-func (w *workerImpl) RegisterActivity(fn any, opts ...ActivityRegisterOption) error {
+func (w *worker) RegisterActivity(fn any, opts ...ActivityRegisterOption) error {
 	fnName, err := extractFullFunctionName(fn)
 	if err != nil {
 		return err
@@ -145,23 +157,7 @@ func (w *workerImpl) RegisterActivity(fn any, opts ...ActivityRegisterOption) er
 	return nil
 }
 
-func buildHistoryStreamName(opts *WorkerOptions) string {
-	if opts == nil {
-		return api.WorkflowHistoryStream
-	}
-
-	var parts []string
-	if opts.TenantID != "" {
-		parts = append(parts, opts.TenantID)
-	}
-	if opts.Namespace != "" {
-		parts = append(parts, opts.Namespace)
-	}
-	parts = append(parts, api.WorkflowHistoryStream)
-	return strings.Join(parts, "_")
-}
-
-func (w *workerImpl) Run(ctx context.Context) error {
+func (w *worker) Run(ctx context.Context) error {
 	g, gCtx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
@@ -172,7 +168,7 @@ func (w *workerImpl) Run(ctx context.Context) error {
 	return g.Wait()
 }
 
-func (w *workerImpl) runProcessingLoop(ctx context.Context) error {
+func (w *worker) runProcessingLoop(ctx context.Context) error {
 	repo, err := chronicle.NewEventSourcedRepository(
 		w.evtLog,
 		NewEmptyWorkflowContext,
@@ -272,7 +268,7 @@ func (w *workerImpl) runProcessingLoop(ctx context.Context) error {
 	return g.Wait()
 }
 
-func (w *workerImpl) processActivityTask(wfctx *workflowContext, task *api.ActivityTask) error {
+func (w *worker) processActivityTask(wfctx *workflowContext, task *api.ActivityTask) error {
 	fn, err := w.activityRegistry.get(task.ActivityFn)
 	if err != nil {
 		w.logger.Error("activity not found in registry", "activity", task.ActivityFn, "error", err)
@@ -325,7 +321,7 @@ func (w *workerImpl) processActivityTask(wfctx *workflowContext, task *api.Activ
 }
 
 // evaluateRetryDecision determines if an activity should be retried based on retry policy
-func (w *workerImpl) evaluateRetryDecision(task *api.ActivityTask, err error) bool {
+func (w *worker) evaluateRetryDecision(task *api.ActivityTask, err error) bool {
 	// No retry policy means no retries
 	if task.RetryPolicy == nil {
 		return false
@@ -359,7 +355,7 @@ func (w *workerImpl) evaluateRetryDecision(task *api.ActivityTask, err error) bo
 }
 
 // calculateRetryDelay calculates the backoff delay for the next retry attempt
-func (w *workerImpl) calculateRetryDelay(task *api.ActivityTask) time.Duration {
+func (w *worker) calculateRetryDelay(task *api.ActivityTask) time.Duration {
 	if task.RetryPolicy == nil {
 		return time.Second // Default 1 second
 	}
@@ -393,7 +389,7 @@ func (w *workerImpl) calculateRetryDelay(task *api.ActivityTask) time.Duration {
 	return nextDelay
 }
 
-func (w *workerImpl) processWorkflowTask(wfctx *workflowContext, task *api.WorkflowTask) error {
+func (w *worker) processWorkflowTask(wfctx *workflowContext, task *api.WorkflowTask) error {
 	var results []reflect.Value
 	var pending bool
 	var panicked bool
@@ -466,15 +462,7 @@ func (w *workerImpl) processWorkflowTask(wfctx *workflowContext, task *api.Workf
 	}
 }
 
-func reflectValuesToAny(vals []reflect.Value) []any {
-	anySlice := make([]any, len(vals))
-	for i, v := range vals {
-		anySlice[i] = v.Interface()
-	}
-	return anySlice
-}
-
-func (w *workerImpl) executeActivityFunc(ctx context.Context, fn any, inputs []any) (result []reflect.Value, err error) {
+func (w *worker) executeActivityFunc(ctx context.Context, fn any, inputs []any) (result []reflect.Value, err error) {
 	fnv := reflect.ValueOf(fn)
 	fnt := fnv.Type()
 
@@ -515,6 +503,6 @@ func (w *workerImpl) executeActivityFunc(ctx context.Context, fn any, inputs []a
 // convertToType converts a value to the target type using serialization-agnostic approach.
 // This delegates to the TypeConverter which uses the configured BinarySerde,
 // making it work regardless of whether we're using JSON, msgpack, protobuf, etc.
-func (w *workerImpl) convertToType(value any, targetType reflect.Type) (reflect.Value, error) {
+func (w *worker) convertToType(value any, targetType reflect.Type) (reflect.Value, error) {
 	return w.typeConverter.ConvertToType(value, targetType)
 }

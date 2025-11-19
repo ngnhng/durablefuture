@@ -24,15 +24,15 @@ import (
 	"github.com/ngnhng/durablefuture/api"
 )
 
-var _ TaskProcessor = (*Conn)(nil)
+var _ taskProcessor = (*sdkNATSConnection)(nil)
 
-func (c *Conn) ReceiveTask(ctx context.Context, includeWorkflow, includeActivity bool) (iter.Seq[*TaskToken], error) {
+func (c *sdkNATSConnection) ReceiveTask(ctx context.Context, includeWorkflow, includeActivity bool) (iter.Seq[*taskToken], error) {
 	if !includeWorkflow && !includeActivity {
 		return nil, fmt.Errorf("at least one task type must be enabled")
 	}
 
 	consumerCtx, cancelConsumers := context.WithCancel(ctx)
-	taskChannel := make(chan *TaskToken)
+	taskChannel := make(chan *taskToken)
 
 	type consumerHandle struct {
 		consumer jetstream.Consumer
@@ -124,7 +124,7 @@ func (c *Conn) ReceiveTask(ctx context.Context, includeWorkflow, includeActivity
 		}(handle)
 	}
 
-	return func(callback func(*TaskToken) bool) {
+	return func(callback func(*taskToken) bool) {
 		defer cancelConsumers()
 		for {
 			select {
@@ -148,8 +148,8 @@ func (c *Conn) ReceiveTask(ctx context.Context, includeWorkflow, includeActivity
 	}, nil
 }
 
-func (c *Conn) enqueueTask(ctx context.Context, task api.Task, msg jetstream.Msg, taskChannel chan<- *TaskToken) {
-	token := &TaskToken{
+func (c *sdkNATSConnection) enqueueTask(ctx context.Context, task api.Task, msg jetstream.Msg, taskChannel chan<- *taskToken) {
+	token := &taskToken{
 		Task: task,
 		Ack:  msg.DoubleAck,
 		Nak:  func(context.Context) error { return msg.Nak() },
