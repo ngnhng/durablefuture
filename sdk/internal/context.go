@@ -23,6 +23,7 @@ import (
 	"github.com/DeluxeOwl/chronicle/aggregate"
 	"github.com/ngnhng/durablefuture/api"
 	"github.com/ngnhng/durablefuture/api/serde"
+	"github.com/ngnhng/durablefuture/sdk/internal/utils"
 )
 
 type Context interface {
@@ -59,7 +60,7 @@ func NewWorkflowContextWithLogger(logger *slog.Logger) *workflowContext {
 			activities: make(map[string]*activityReplay),
 		},
 		Context: context.Background(),
-		logger:  defaultLogger(logger),
+		logger:  utils.DefaultLogger(logger),
 	}
 }
 
@@ -142,7 +143,7 @@ func (c *workflowContext) loggerOrDefault() *slog.Logger {
 	if c == nil {
 		return slog.Default()
 	}
-	return defaultLogger(c.logger)
+	return utils.DefaultLogger(c.logger)
 }
 
 // getNewEvents is an unexported method accessible only within the `workflow` package.

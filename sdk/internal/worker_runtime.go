@@ -29,12 +29,13 @@ import (
 	"github.com/DeluxeOwl/chronicle/eventlog"
 	"github.com/ngnhng/durablefuture/api"
 	"github.com/ngnhng/durablefuture/api/serde"
+	"github.com/ngnhng/durablefuture/sdk/internal/utils"
 	"golang.org/x/sync/errgroup"
 )
 
 // --- task processor: worker runtime processing nats incoming messages ---
 type taskProcessor interface {
-	ReceiveTask(ctx context.Context, includeWorkflow, includeActivity bool) (iter.Seq[*taskToken], error)
+	ReceiveTask(ctx context.Context, includeWorkflow, includeActivity bool) (iter.Seq[*TaskToken], error)
 }
 
 var _ taskProcessor = (*worker)(nil)
@@ -99,7 +100,7 @@ func NewWorker(c Client, opts *WorkerOptions) (*worker, error) {
 	if logger == nil && c != nil {
 		logger = c.getLogger()
 	}
-	logger = defaultLogger(logger)
+	logger = utils.DefaultLogger(logger)
 
 	streamName := buildHistoryStreamName(opts)
 	subjectPrefix := opts.Namespace
@@ -398,7 +399,7 @@ func (w *worker) processWorkflowTask(wfctx *workflowContext, task *api.WorkflowT
 		defer func() {
 			if r := recover(); r != nil {
 				panicked = true
-				if _, ok := r.(ErrorBlockingFuture); ok {
+				if _, ok := r.(errorBlockingFuture); ok {
 					pending = true
 					return
 				}

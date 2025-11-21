@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package internal
+package nats
 
 import (
 	"context"
@@ -24,15 +24,20 @@ import (
 	"github.com/ngnhng/durablefuture/api"
 )
 
-var _ taskProcessor = (*sdkNATSConnection)(nil)
+type TaskToken struct {
+	Task api.Task
+	Ack  func(context.Context) error
+	Nak  func(context.Context) error
+	Term func(context.Context) error
+}
 
-func (c *sdkNATSConnection) ReceiveTask(ctx context.Context, includeWorkflow, includeActivity bool) (iter.Seq[*taskToken], error) {
+func (c *Conn) ReceiveTask(ctx context.Context, includeWorkflow, includeActivity bool) (iter.Seq[*TaskToken], error) {
 	if !includeWorkflow && !includeActivity {
 		return nil, fmt.Errorf("at least one task type must be enabled")
 	}
 
 	consumerCtx, cancelConsumers := context.WithCancel(ctx)
-	taskChannel := make(chan *taskToken)
+	taskChannel := make(chan *TaskToken)
 
 	type consumerHandle struct {
 		consumer jetstream.Consumer
@@ -61,7 +66,7 @@ func (c *sdkNATSConnection) ReceiveTask(ctx context.Context, includeWorkflow, in
 			taskType: "workflow",
 			handler: func(msg jetstream.Msg) {
 				task := &api.WorkflowTask{}
-				if err := c.converter.DeserializeBinary(msg.Data(), task); err != nil {
+				if err := c.DeserializeBinary(msg.Data(), task); err != nil {
 					msg.Term()
 					return
 				}
@@ -89,7 +94,7 @@ func (c *sdkNATSConnection) ReceiveTask(ctx context.Context, includeWorkflow, in
 			taskType: "activity",
 			handler: func(msg jetstream.Msg) {
 				task := &api.ActivityTask{}
-				if err := c.converter.DeserializeBinary(msg.Data(), task); err != nil {
+				if err := c.DeserializeBinary(msg.Data(), task); err != nil {
 					msg.Term()
 					return
 				}
@@ -124,7 +129,7 @@ func (c *sdkNATSConnection) ReceiveTask(ctx context.Context, includeWorkflow, in
 		}(handle)
 	}
 
-	return func(callback func(*taskToken) bool) {
+	return func(callback func(*TaskToken) bool) {
 		defer cancelConsumers()
 		for {
 			select {
@@ -148,8 +153,8 @@ func (c *sdkNATSConnection) ReceiveTask(ctx context.Context, includeWorkflow, in
 	}, nil
 }
 
-func (c *sdkNATSConnection) enqueueTask(ctx context.Context, task api.Task, msg jetstream.Msg, taskChannel chan<- *taskToken) {
-	token := &taskToken{
+func (c *Conn) enqueueTask(ctx context.Context, task api.Task, msg jetstream.Msg, taskChannel chan<- *TaskToken) {
+	token := &TaskToken{
 		Task: task,
 		Ack:  msg.DoubleAck,
 		Nak:  func(context.Context) error { return msg.Nak() },

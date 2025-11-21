@@ -20,6 +20,7 @@ import (
 	"log/slog"
 
 	"github.com/ngnhng/durablefuture/api/serde"
+	"github.com/ngnhng/durablefuture/sdk/internal/utils"
 )
 
 var _ Future = (*pending)(nil)
@@ -39,7 +40,7 @@ type pending struct {
 
 func (f *pending) Get(ctx context.Context, resultPtr any) error {
 	if !f.isResolved {
-		panic(ErrorBlockingFuture{})
+		panic(errorBlockingFuture{})
 	}
 	if f.err != nil {
 		return f.err
@@ -92,5 +93,5 @@ func (f *pending) loggerOrDefault() *slog.Logger {
 	if f == nil {
 		return slog.Default()
 	}
-	return defaultLogger(f.logger)
+	return utils.DefaultLogger(f.logger)
 }

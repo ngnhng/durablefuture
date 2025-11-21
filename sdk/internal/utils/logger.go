@@ -1,8 +1,8 @@
-package internal
+package utils
 
 import "log/slog"
 
-func defaultLogger(l *slog.Logger) *slog.Logger {
+func DefaultLogger(l *slog.Logger) *slog.Logger {
 	if l != nil {
 		return l
 	}

@@ -14,10 +14,10 @@
 
 package internal
 
-// ErrorBlockingFuture is thrown in a panic if a Future is not ready when Get is called.
+// errorBlockingFuture is thrown in a panic if a Future is not ready when Get is called.
 // The concept is similar to the yield mechanism in coroutines, this will pause the workflow and resume it when the Future is ready.
-type ErrorBlockingFuture struct{}
+type errorBlockingFuture struct{}
 
-func (e ErrorBlockingFuture) Error() string {
+func (e errorBlockingFuture) Error() string {
 	return "blocking_future"
 }

@@ -23,20 +23,19 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/ngnhng/durablefuture/api"
 	"github.com/ngnhng/durablefuture/api/serde"
+	"github.com/ngnhng/durablefuture/sdk/internal/commands"
+	natz "github.com/ngnhng/durablefuture/sdk/internal/nats"
+	"github.com/ngnhng/durablefuture/sdk/internal/utils"
 )
 
 var _ Client = (*clientImpl)(nil)
 
 type (
-	WorkflowExecutor interface {
-		StartWorkflow(ctx context.Context, attrs *api.StartWorkflowAttributes) (*api.StartWorkflowReply, error)
-	}
-
 	Client interface {
 		// ExecuteWorkflow starts a workflow execution.
 		ExecuteWorkflow(ctx context.Context, workflowFn any, input ...any) (Future, error)
 		// Accessors to underlying components, not exposed for public consumption
-		getConn() *sdkNATSConnection
+		getConn() *natz.Conn
 		getSerde() serde.BinarySerde
 		getLogger() *slog.Logger
 	}
@@ -49,12 +48,10 @@ type (
 )
 
 type clientImpl struct {
-	WorkflowExecutor
-
 	converter serde.BinarySerde
 	logger    *slog.Logger
 	options   *ClientOptions
-	nc        *sdkNATSConnection
+	nc        *natz.Conn
 }
 
 func NewClient(options *ClientOptions) (Client, error) {
@@ -63,20 +60,23 @@ func NewClient(options *ClientOptions) (Client, error) {
 	}
 
 	serder := &serde.MsgpackSerde{}
-	logger := defaultLogger(options.Logger)
-	conn, err := wrapExisting(options.Conn, options.Namespace, serder)
+	logger := utils.DefaultLogger(options.Logger)
+	conn, err := natz.WrapExisting(options.Conn, options.Namespace, serder)
 	if err != nil {
 		return nil, err
 	}
 	conn.SetLogger(logger)
 
 	return &clientImpl{
-		WorkflowExecutor: conn,
-		converter:        serder,
-		logger:           logger,
-		options:          options,
-		nc:               conn,
+		converter: serder,
+		logger:    logger,
+		options:   options,
+		nc:        conn,
 	}, nil
+}
+
+func (c *clientImpl) startWorkflow(ctx context.Context, attrs *api.StartWorkflowAttributes) (*api.StartWorkflowReply, error) {
+	return commands.StartWorkflow(ctx, c.nc, attrs)
 }
 
 // ExecuteWorkflow implements Client.
@@ -93,7 +93,7 @@ func (c *clientImpl) ExecuteWorkflow(ctx context.Context, workflowFn any, input 
 		Input:          input,
 	}
 
-	reply, err := c.StartWorkflow(ctx, attrs)
+	reply, err := c.startWorkflow(ctx, attrs)
 
 	if reply.Error != "" {
 		return nil, fmt.Errorf("starting workflow failed on server: %s", reply.Error)
@@ -105,9 +105,9 @@ func (c *clientImpl) ExecuteWorkflow(ctx context.Context, workflowFn any, input 
 
 	workflowId, _ := uuid.FromString(reply.WorkflowID)
 
-	return NewExecution(c, c.getConn(), c.converter, workflowId), nil
+	return newExecution(c, c.getConn(), c.converter, workflowId), nil
 }
 
-func (c *clientImpl) getConn() *sdkNATSConnection { return c.nc }
+func (c *clientImpl) getConn() *natz.Conn         { return c.nc }
 func (c *clientImpl) getSerde() serde.BinarySerde { return c.converter }
 func (c *clientImpl) getLogger() *slog.Logger     { return c.logger }

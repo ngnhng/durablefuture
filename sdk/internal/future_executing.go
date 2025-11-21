@@ -22,38 +22,33 @@ import (
 	"github.com/ngnhng/durablefuture/api/serde"
 )
 
-type WorkflowResultWatcher interface {
+type workflowResultWatcher interface {
 	// Watch waits for the result of a given workflow and returns the raw data.
 	// It should block until the result is available or the context is canceled.
 	Watch(ctx context.Context, workflowID string) ([]byte, error)
 }
 
-type WorkflowResult struct {
-	Value any
-	Err   error
-}
-
-var _ Future = (*executing)(nil)
-
 type executing struct {
-	c          Client
-	watcher    WorkflowResultWatcher
+	c Client
+	workflowResultWatcher
 	converter  serde.BinarySerde
 	workflowID string
 }
 
-func NewExecution(c Client, watcher WorkflowResultWatcher, conv serde.BinarySerde, workflowID uuid.UUID) *executing {
+var _ Future = (*executing)(nil)
+
+func newExecution(c Client, watcher workflowResultWatcher, conv serde.BinarySerde, workflowID uuid.UUID) *executing {
 	return &executing{
-		c:          c,
-		watcher:    watcher,
-		converter:  conv,
-		workflowID: workflowID.String(),
+		c:                     c,
+		workflowResultWatcher: watcher,
+		converter:             conv,
+		workflowID:            workflowID.String(),
 	}
 }
 
 func (e *executing) Get(ctx context.Context, valuePtr any) error {
 	// Delegate the waiting and data fetching to the watcher.
-	rawData, err := e.watcher.Watch(ctx, e.workflowID)
+	rawData, err := e.Watch(ctx, e.workflowID)
 	if err != nil {
 		return fmt.Errorf("error waiting for workflow result: %w", err)
 	}
