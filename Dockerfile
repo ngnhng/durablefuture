@@ -20,21 +20,30 @@ ARG TARGETARCH
 
 WORKDIR /src
 
+# Force vendor mode
 ENV GOFLAGS="-mod=vendor"
 
+# Copy dependency definitions first (for caching layers)
 COPY go.mod go.sum ./
-COPY internal/third_party/chronicle ./internal/third_party/chronicle
 COPY vendor ./vendor
 
+# Copy source code
 COPY . .
 
+# Optional: Run tests (uncomment if desired in build stage)
+# RUN CGO_ENABLED=0 go test ./...
+
+# -trimpath: Removes filesystem paths from the binary (better security/reproducibility)
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH:-amd64} \
-    go build -ldflags="-s -w" -o /out/${TARGETBIN} ${TARGETPKG}
+    go build -trimpath -ldflags="-s -w" -o /out/${TARGETBIN} ${TARGETPKG}
 
 FROM gcr.io/distroless/static-debian12
 
 ARG TARGETBIN=server
 
 COPY --from=builder /out/${TARGETBIN} /bin/app
+
+# SECURITY: Run as non-root user provided by distroless (uid: 65532)
+USER nonroot:nonroot
 
 ENTRYPOINT ["/bin/app"]

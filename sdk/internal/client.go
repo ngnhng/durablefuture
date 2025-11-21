@@ -62,8 +62,9 @@ func NewClient(options *ClientOptions) (Client, error) {
 		return nil, fmt.Errorf("client options must include an established NATS connection")
 	}
 
+	serder := &serde.MsgpackSerde{}
 	logger := defaultLogger(options.Logger)
-	conn, err := wrapExisting(options.Conn, options.Namespace, nil)
+	conn, err := wrapExisting(options.Conn, options.Namespace, serder)
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +72,7 @@ func NewClient(options *ClientOptions) (Client, error) {
 
 	return &clientImpl{
 		WorkflowExecutor: conn,
-		converter:        &serde.MsgpackSerde{},
+		converter:        serder,
 		logger:           logger,
 		options:          options,
 		nc:               conn,
