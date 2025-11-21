@@ -104,16 +104,16 @@ func main() {
 }
 
 func runWorkflowWorker(ctx context.Context, c client.Client, example scenarios.Example) error {
-	workerClient, err := worker.NewWorker(c, nil)
+	w, err := worker.NewWorker(c, nil)
 	if err != nil {
 		return fmt.Errorf("error creating workflow worker: %w", err)
 	}
 
-	if err := example.RegisterWorkflows(workerClient); err != nil {
+	if err := example.RegisterWorkflows(w); err != nil {
 		return fmt.Errorf("error registering workflows: %w", err)
 	}
 
-	if err := workerClient.Run(ctx); err != nil {
+	if err := w.Run(ctx); err != nil {
 		return fmt.Errorf("error running workflow worker: %w", err)
 	}
 	return nil

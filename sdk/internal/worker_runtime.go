@@ -78,7 +78,7 @@ type WorkerOptions struct {
 type worker struct {
 	c Client
 
-	converter     serde.BinarySerde
+	serder        serde.BinarySerde
 	typeConverter *serde.TypeConverter
 
 	// the sdk nats connection implements this
@@ -87,8 +87,8 @@ type worker struct {
 	workflowRegistry kv
 	activityRegistry kv
 
-	evtLog *eventlog.NATS
-	logger *slog.Logger
+	eventLog *eventlog.NATS
+	logger   *slog.Logger
 }
 
 func NewWorker(c Client, opts *WorkerOptions) (*worker, error) {
@@ -118,13 +118,13 @@ func NewWorker(c Client, opts *WorkerOptions) (*worker, error) {
 		return nil, err
 	}
 
-	conv := c.getSerde()
+	serder := c.getSerde()
 	return &worker{
 		c:                c,
-		converter:        conv,
-		typeConverter:    serde.NewTypeConverter(conv),
+		serder:           serder,
+		typeConverter:    serde.NewTypeConverter(serder),
 		taskProcessor:    c.getConn(),
-		evtLog:           log,
+		eventLog:         log,
 		workflowRegistry: newInMemoryRegistry(),
 		activityRegistry: newInMemoryRegistry(),
 		logger:           logger,
@@ -171,11 +171,10 @@ func (w *worker) Run(ctx context.Context) error {
 
 func (w *worker) runProcessingLoop(ctx context.Context) error {
 	repo, err := chronicle.NewEventSourcedRepository(
-		w.evtLog,
-		NewEmptyWorkflowContext,
+		w.eventLog,
+		newEmptyWorkflowContext,
 		nil,
-		// Pass the serializer to Chronicle so it uses MessagePack (or whatever serde is configured)
-		aggregate.EventSerializer(w.converter),
+		aggregate.EventSerializer(w.serder),
 	)
 	if err != nil {
 		w.logger.Error("cannot create repository, sending NAK", "error", err)
@@ -201,7 +200,7 @@ func (w *worker) runProcessingLoop(ctx context.Context) error {
 			switch task := token.Task.(type) {
 			case *api.WorkflowTask:
 				{
-					wfctx, err := repo.Get(gCtx, api.WorkflowID(task.WorkflowID))
+					workflow, err := repo.Get(gCtx, api.WorkflowID(task.WorkflowID))
 					if err != nil {
 						w.logger.Error("failed to replay workflow", "workflow_id", task.WorkflowID, "error", err)
 						// Terminate the task if we can't even replay the workflow.
@@ -209,11 +208,11 @@ func (w *worker) runProcessingLoop(ctx context.Context) error {
 						return err
 					}
 
-					wfctx.Context = gCtx
-					wfctx.converter = w.converter
-					wfctx.logger = w.logger
+					workflow.Context = gCtx
+					workflow.serder = w.serder
+					workflow.logger = w.logger
 
-					err = w.processWorkflowTask(wfctx, task)
+					err = w.processWorkflowTask(workflow, task)
 					if err != nil {
 						w.logger.Error("workflow task failed, sending NAK", "workflow_id", task.WorkflowID, "error", err)
 						token.Nak(gCtx)
@@ -222,7 +221,7 @@ func (w *worker) runProcessingLoop(ctx context.Context) error {
 						token.Ack(gCtx)
 					}
 
-					_, _, err = repo.Save(gCtx, wfctx)
+					_, _, err = repo.Save(gCtx, workflow)
 					if err != nil {
 						return err
 					}
@@ -239,7 +238,7 @@ func (w *worker) runProcessingLoop(ctx context.Context) error {
 					}
 
 					wfctx.Context = gCtx
-					wfctx.converter = w.converter
+					wfctx.serder = w.serder
 					wfctx.logger = w.logger
 
 					err = w.processActivityTask(wfctx, task)
