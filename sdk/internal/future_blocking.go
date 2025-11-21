@@ -20,17 +20,16 @@ import (
 	"log/slog"
 
 	"github.com/ngnhng/durablefuture/api/serde"
-	"github.com/ngnhng/durablefuture/sdk/internal/utils"
+	"github.com/ngnhng/durablefuture/sdk/internal/common"
 )
 
-var _ Future = (*pending)(nil)
+var _ Future = (*blocking)(nil)
 
 type Future interface {
 	Get(ctx context.Context, valuePtr any) error
 }
 
-// pending is the internal implementation.
-type pending struct {
+type blocking struct {
 	isResolved bool
 	value      []any
 	err        error
@@ -38,7 +37,7 @@ type pending struct {
 	logger     *slog.Logger
 }
 
-func (f *pending) Get(ctx context.Context, resultPtr any) error {
+func (f *blocking) Get(ctx context.Context, resultPtr any) error {
 	if !f.isResolved {
 		panic(errorBlockingFuture{})
 	}
@@ -47,7 +46,7 @@ func (f *pending) Get(ctx context.Context, resultPtr any) error {
 	}
 	if resultPtr != nil && f.value != nil {
 
-		f.loggerOrDefault().Debug("activity future resolved", "values", debugAnyValues(f.value))
+		f.loggerOrDefault().Debug("activity future resolved", "values", common.DebugAnyValues(f.value))
 
 		// Check if we have both result and error parts
 		if len(f.value) != 2 {
@@ -89,9 +88,9 @@ func (f *pending) Get(ctx context.Context, resultPtr any) error {
 	return nil
 }
 
-func (f *pending) loggerOrDefault() *slog.Logger {
+func (f *blocking) loggerOrDefault() *slog.Logger {
 	if f == nil {
 		return slog.Default()
 	}
-	return utils.DefaultLogger(f.logger)
+	return common.DefaultLogger(f.logger)
 }

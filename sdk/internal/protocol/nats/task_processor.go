@@ -164,6 +164,8 @@ func (c *Conn) enqueueTask(ctx context.Context, task api.Task, msg jetstream.Msg
 	select {
 	case <-ctx.Done():
 		msg.Nak()
+		return
 	case taskChannel <- token:
+		return
 	}
 }

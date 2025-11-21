@@ -26,7 +26,7 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 	"github.com/ngnhng/durablefuture/api"
 	"github.com/ngnhng/durablefuture/api/serde"
-	"github.com/ngnhng/durablefuture/sdk/internal/utils"
+	"github.com/ngnhng/durablefuture/sdk/internal/common"
 )
 
 type (
@@ -111,14 +111,14 @@ func (c *Conn) Close() {
 }
 
 func (c *Conn) SetLogger(l *slog.Logger) {
-	c.logger = utils.DefaultLogger(l)
+	c.logger = common.DefaultLogger(l)
 }
 
 func (c *Conn) Logger() *slog.Logger {
 	if c == nil {
 		return slog.Default()
 	}
-	return utils.DefaultLogger(c.logger)
+	return common.DefaultLogger(c.logger)
 }
 
 // JS returns the JetStream context associated with the NATS connection.

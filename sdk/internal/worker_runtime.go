@@ -22,6 +22,7 @@ import (
 	"math"
 	"reflect"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/DeluxeOwl/chronicle"
@@ -29,13 +30,14 @@ import (
 	"github.com/DeluxeOwl/chronicle/eventlog"
 	"github.com/ngnhng/durablefuture/api"
 	"github.com/ngnhng/durablefuture/api/serde"
-	"github.com/ngnhng/durablefuture/sdk/internal/utils"
+	"github.com/ngnhng/durablefuture/sdk/internal/common"
+	"github.com/ngnhng/durablefuture/sdk/internal/protocol"
 	"golang.org/x/sync/errgroup"
 )
 
 // --- task processor: worker runtime processing nats incoming messages ---
 type taskProcessor interface {
-	ReceiveTask(ctx context.Context, includeWorkflow, includeActivity bool) (iter.Seq[*TaskToken], error)
+	ReceiveTask(ctx context.Context, includeWorkflow, includeActivity bool) (iter.Seq[*protocol.TaskToken], error)
 }
 
 var _ taskProcessor = (*worker)(nil)
@@ -76,7 +78,7 @@ type WorkerOptions struct {
 	Logger    *slog.Logger
 }
 type worker struct {
-	c Client
+	c client
 
 	serder        serde.BinarySerde
 	typeConverter *serde.TypeConverter
@@ -92,15 +94,20 @@ type worker struct {
 }
 
 func NewWorker(c Client, opts *WorkerOptions) (*worker, error) {
+	// Type assert to get internal methods
+	ci, ok := c.(client)
+	if !ok {
+		return nil, fmt.Errorf("client does not implement required internal interface")
+	}
 	if opts == nil {
 		opts = &WorkerOptions{}
 	}
 
 	logger := opts.Logger
-	if logger == nil && c != nil {
-		logger = c.getLogger()
+	if logger == nil && ci != nil {
+		logger = ci.getLogger()
 	}
-	logger = utils.DefaultLogger(logger)
+	logger = common.DefaultLogger(logger)
 
 	streamName := buildHistoryStreamName(opts)
 	subjectPrefix := opts.Namespace
@@ -110,7 +117,7 @@ func NewWorker(c Client, opts *WorkerOptions) (*worker, error) {
 
 	// TODO: api based config
 	log, err := eventlog.NewNATSJetStream(
-		c.getConn().NATS(),
+		ci.getConn().NATS(),
 		eventlog.WithNATSStreamName(streamName),
 		eventlog.WithNATSSubjectPrefix(subjectPrefix),
 	)
@@ -118,12 +125,12 @@ func NewWorker(c Client, opts *WorkerOptions) (*worker, error) {
 		return nil, err
 	}
 
-	serder := c.getSerde()
+	serder := ci.getSerde()
 	return &worker{
-		c:                c,
+		c:                ci,
 		serder:           serder,
 		typeConverter:    serde.NewTypeConverter(serder),
-		taskProcessor:    c.getConn(),
+		taskProcessor:    ci.getConn(),
 		eventLog:         log,
 		workflowRegistry: newInMemoryRegistry(),
 		activityRegistry: newInMemoryRegistry(),
@@ -131,8 +138,24 @@ func NewWorker(c Client, opts *WorkerOptions) (*worker, error) {
 	}, nil
 }
 
+func buildHistoryStreamName(opts *WorkerOptions) string {
+	if opts == nil {
+		return api.WorkflowHistoryStream
+	}
+
+	var parts []string
+	if opts.TenantID != "" {
+		parts = append(parts, opts.TenantID)
+	}
+	if opts.Namespace != "" {
+		parts = append(parts, opts.Namespace)
+	}
+	parts = append(parts, api.WorkflowHistoryStream)
+	return strings.Join(parts, "_")
+}
+
 func (w *worker) RegisterWorkflow(fn any, options ...WorkflowRegisterOption) error {
-	fnName, err := extractFullFunctionName(fn)
+	fnName, err := common.ExtractFullFunctionName(fn)
 	if err != nil {
 		return err
 	}
@@ -146,7 +169,7 @@ func (w *worker) RegisterWorkflow(fn any, options ...WorkflowRegisterOption) err
 }
 
 func (w *worker) RegisterActivity(fn any, opts ...ActivityRegisterOption) error {
-	fnName, err := extractFullFunctionName(fn)
+	fnName, err := common.ExtractFullFunctionName(fn)
 	if err != nil {
 		return err
 	}
@@ -314,7 +337,7 @@ func (w *worker) processActivityTask(wfctx *workflowContext, task *api.ActivityT
 		ID:             api.WorkflowID(task.WorkflowID),
 		WorkflowFnName: task.WorkflowFn,
 		ActivityFnName: task.ActivityFn,
-		Result:         reflectValuesToAny(result),
+		Result:         common.ReflectValuesToAny(result),
 	})
 
 	return nil
@@ -456,7 +479,7 @@ func (w *worker) processWorkflowTask(wfctx *workflowContext, task *api.WorkflowT
 		wfctx.recordThat(&api.WorkflowCompleted{
 			ID:             api.WorkflowID(task.WorkflowID),
 			WorkflowFnName: task.WorkflowFn,
-			Result:         reflectValuesToAny(results),
+			Result:         common.ReflectValuesToAny(results),
 		})
 		return nil
 	}

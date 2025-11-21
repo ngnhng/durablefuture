@@ -18,7 +18,23 @@ import (
 	"github.com/ngnhng/durablefuture/sdk/internal"
 )
 
-// Context is the interface for Workflow Operations.
+// Context is the workflow execution context that provides deterministic guarantees.
+//
+// Context extends context.Context with workflow-specific operations. All workflow
+// operations must go through this context to maintain determinism during replay.
+//
+// Key methods:
+//   - ExecuteActivity: Schedule an activity for execution
+//   - WithValue: Store values in the workflow context
+//   - Done/Deadline/Err/Value: Standard context.Context methods
+//
+// Important: Workflow code must be deterministic. Do not:
+//   - Perform I/O operations directly
+//   - Generate random numbers
+//   - Access current time directly
+//   - Use goroutines
+//
+// Use activities for all non-deterministic operations.
 type Context = internal.Context
 
 // ExecuteActivity schedules the execution of an activity function.

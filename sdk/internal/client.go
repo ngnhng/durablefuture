@@ -23,29 +23,42 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/ngnhng/durablefuture/api"
 	"github.com/ngnhng/durablefuture/api/serde"
-	"github.com/ngnhng/durablefuture/sdk/internal/commands"
-	natz "github.com/ngnhng/durablefuture/sdk/internal/nats"
-	"github.com/ngnhng/durablefuture/sdk/internal/utils"
+	"github.com/ngnhng/durablefuture/sdk/internal/common"
+	"github.com/ngnhng/durablefuture/sdk/internal/protocol/commands"
+	natz "github.com/ngnhng/durablefuture/sdk/internal/protocol/nats"
 )
+
+// Client is the public interface for interacting with workflows.
+// Users of the SDK will use this interface to start workflows and get results.
+type Client interface {
+	// ExecuteWorkflow starts a workflow execution and returns a Future for the result.
+	// The workflowFn must be a function that has been registered with a worker.
+	// Input parameters are passed to the workflow function and must be serializable.
+	ExecuteWorkflow(ctx context.Context, workflowFn any, input ...any) (Future, error)
+}
+
+type client interface {
+	Client
+	getConn() *natz.Conn
+	getSerde() serde.BinarySerde
+	getLogger() *slog.Logger
+}
+
+// ClientOptions contains configuration for creating a new Client.
+type ClientOptions struct {
+	// Namespace provides logical isolation between environments or tenants.
+	// All workflows and activities are scoped to a namespace.
+	Namespace string
+
+	// Conn is the established NATS connection. Required.
+	Conn *nats.Conn
+
+	// Logger is used for SDK logging. If nil, a default logger is used.
+	Logger *slog.Logger
+}
 
 var _ Client = (*clientImpl)(nil)
-
-type (
-	Client interface {
-		// ExecuteWorkflow starts a workflow execution.
-		ExecuteWorkflow(ctx context.Context, workflowFn any, input ...any) (Future, error)
-		// Accessors to underlying components, not exposed for public consumption
-		getConn() *natz.Conn
-		getSerde() serde.BinarySerde
-		getLogger() *slog.Logger
-	}
-
-	ClientOptions struct {
-		Namespace string
-		Conn      *nats.Conn
-		Logger    *slog.Logger
-	}
-)
+var _ client = (*clientImpl)(nil)
 
 type clientImpl struct {
 	converter serde.BinarySerde
@@ -60,7 +73,7 @@ func NewClient(options *ClientOptions) (Client, error) {
 	}
 
 	serder := &serde.MsgpackSerde{}
-	logger := utils.DefaultLogger(options.Logger)
+	logger := common.DefaultLogger(options.Logger)
 	conn, err := natz.WrapExisting(options.Conn, options.Namespace, serder)
 	if err != nil {
 		return nil, err
@@ -83,7 +96,7 @@ func (c *clientImpl) startWorkflow(ctx context.Context, attrs *api.StartWorkflow
 // It starts a workflow execution by sending a command request to the manager and waits for the reply containing the workflow ID.
 func (c *clientImpl) ExecuteWorkflow(ctx context.Context, workflowFn any, input ...any) (Future, error) {
 
-	workflowName, err := extractFullFunctionName(workflowFn)
+	workflowName, err := common.ExtractFullFunctionName(workflowFn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to extract workflow function name: %w", err)
 	}

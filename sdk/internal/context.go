@@ -23,7 +23,7 @@ import (
 	"github.com/DeluxeOwl/chronicle/aggregate"
 	"github.com/ngnhng/durablefuture/api"
 	"github.com/ngnhng/durablefuture/api/serde"
-	"github.com/ngnhng/durablefuture/sdk/internal/utils"
+	"github.com/ngnhng/durablefuture/sdk/internal/common"
 )
 
 type Context interface {
@@ -58,12 +58,12 @@ func newWorkflowContextWithLogger(logger *slog.Logger) *workflowContext {
 			activities: make(map[string]*activityReplay),
 		},
 		Context: context.Background(),
-		logger:  utils.DefaultLogger(logger),
+		logger:  common.DefaultLogger(logger),
 	}
 }
 
 func (c *workflowContext) ExecuteActivity(activityFn any, args ...any) Future {
-	fnName, err := extractFullFunctionName(activityFn)
+	fnName, err := common.ExtractFullFunctionName(activityFn)
 	if err != nil {
 		// TODO: gracefully handle crash here
 		c.loggerOrDefault().Error("failed to extract activity function name", "error", err)
@@ -76,14 +76,14 @@ func (c *workflowContext) ExecuteActivity(activityFn any, args ...any) Future {
 		record := entry.history[entry.consumed]
 		entry.consumed++
 		if record.err != nil {
-			return &pending{
+			return &blocking{
 				isResolved: true,
 				err:        record.err,
 				converter:  c.serder,
 				logger:     c.logger,
 			}
 		}
-		return &pending{
+		return &blocking{
 			isResolved: true,
 			value:      record.result,
 			converter:  c.serder,
@@ -122,14 +122,14 @@ func (c *workflowContext) ExecuteActivity(activityFn any, args ...any) Future {
 		panic(fmt.Errorf("record activity scheduled event: %w", err))
 	}
 
-	return &pending{isResolved: false, converter: c.serder, logger: c.logger}
+	return &blocking{isResolved: false, converter: c.serder, logger: c.logger}
 }
 
 func (c *workflowContext) loggerOrDefault() *slog.Logger {
 	if c == nil {
 		return slog.Default()
 	}
-	return utils.DefaultLogger(c.logger)
+	return common.DefaultLogger(c.logger)
 }
 
 func (c *workflowContext) WithValue(key any, value any) Context {

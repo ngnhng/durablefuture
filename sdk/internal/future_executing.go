@@ -29,7 +29,7 @@ type workflowResultWatcher interface {
 }
 
 type executing struct {
-	c Client
+	c client
 	workflowResultWatcher
 	converter  serde.BinarySerde
 	workflowID string
@@ -37,7 +37,7 @@ type executing struct {
 
 var _ Future = (*executing)(nil)
 
-func newExecution(c Client, watcher workflowResultWatcher, conv serde.BinarySerde, workflowID uuid.UUID) *executing {
+func newExecution(c client, watcher workflowResultWatcher, conv serde.BinarySerde, workflowID uuid.UUID) *executing {
 	return &executing{
 		c:                     c,
 		workflowResultWatcher: watcher,

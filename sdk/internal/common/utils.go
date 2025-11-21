@@ -12,19 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package internal
+package common
 
 import (
 	"fmt"
 	"reflect"
 	"runtime"
-	"strings"
-
-	"github.com/ngnhng/durablefuture/api"
 )
 
-// extractFullFunctionName extracts the function's name with the preceding packages details.
-func extractFullFunctionName(fn any) (string, error) {
+// ExtractFullFunctionName extracts the function's name with the preceding packages details.
+func ExtractFullFunctionName(fn any) (string, error) {
 	if reflect.TypeOf(fn).Kind() != reflect.Func {
 		return "", fmt.Errorf("fn is not of function type")
 	}
@@ -36,8 +33,8 @@ func extractFullFunctionName(fn any) (string, error) {
 	return fnObj.Name(), nil
 }
 
-// debugAnyValues returns a string representation of []any for debugging
-func debugAnyValues(vals []any) string {
+// DebugAnyValues returns a string representation of []any for debugging
+func DebugAnyValues(vals []any) string {
 	if len(vals) == 0 {
 		return "[]any{} (empty)"
 	}
@@ -54,26 +51,10 @@ func debugAnyValues(vals []any) string {
 	return result
 }
 
-func reflectValuesToAny(vals []reflect.Value) []any {
+func ReflectValuesToAny(vals []reflect.Value) []any {
 	anySlice := make([]any, len(vals))
 	for i, v := range vals {
 		anySlice[i] = v.Interface()
 	}
 	return anySlice
-}
-
-func buildHistoryStreamName(opts *WorkerOptions) string {
-	if opts == nil {
-		return api.WorkflowHistoryStream
-	}
-
-	var parts []string
-	if opts.TenantID != "" {
-		parts = append(parts, opts.TenantID)
-	}
-	if opts.Namespace != "" {
-		parts = append(parts, opts.Namespace)
-	}
-	parts = append(parts, api.WorkflowHistoryStream)
-	return strings.Join(parts, "_")
 }
