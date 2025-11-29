@@ -55,13 +55,13 @@ func (h *Handler) sendErrorReply(msg *nats.Msg, workflowID, errorMsg string) {
 }
 
 func (h *Handler) HandleRequest(msg *nats.Msg) {
-	slog.Debug(fmt.Sprintf("HANDLER ENTRY: Subject=%s, Reply=%s", msg.Subject, msg.Reply))
+	slog.Debug("handler entry", "subject", msg.Subject, "reply", msg.Reply)
 
 	defer func() {
 		if r := recover(); r != nil {
-			slog.Error("PANIC in request handler", "error", r)
+			slog.Error("panic in request handler", "error", r)
 			if err := msg.Term(); err != nil {
-				slog.Error("Failed to nak message after panic", "error", err)
+				slog.Error("failed to nak message after panic", "error", err)
 			}
 		}
 	}()
@@ -78,15 +78,14 @@ func (h *Handler) HandleRequest(msg *nats.Msg) {
 		{
 			var data api.StartWorkflowAttributes
 			if err := h.conv.DeserializeBinary(cmd.Attributes, &data); err != nil {
-				slog.Debug(fmt.Sprintf("failed to unmarshal start workflow attributes: %v", err))
+				slog.Debug("failed to unmarshal start workflow attributes", "error", err)
 				h.sendErrorReply(msg, "", "failed to parse request attributes: "+err.Error())
 				return
 			}
-			slog.Debug(fmt.Sprintf("request data: %v", data))
+			slog.Debug("received request data", "workflow_fn", data.WorkflowFnName, "input_count", len(data.Input))
 			workflowID, _ := uuid.NewV7()
-			slog.Debug(fmt.Sprintf("generated workflow ID: %v", workflowID))
 			idStr := workflowID.String()
-			slog.Debug(fmt.Sprintf("generated workflow ID String: %v", idStr))
+			slog.Debug("generated workflow ID", "workflow_id", idStr)
 
 			event := api.WorkflowStarted{
 				ID:             api.WorkflowID(workflowID.String()),
@@ -96,17 +95,17 @@ func (h *Handler) HandleRequest(msg *nats.Msg) {
 
 			js, err := h.conn.JS()
 			if err != nil {
-				slog.Debug(fmt.Sprintf("failed to get JetStream context: %v", err))
+				slog.Debug("failed to get JetStream context", "error", err)
 				h.sendErrorReply(msg, "", "internal server error: failed to get JetStream context: "+err.Error())
 				return
 			}
 
 			reply, err := h.conv.SerializeBinary(api.StartWorkflowReply{WorkflowID: workflowID.String()})
 			if err != nil {
-				slog.Debug(fmt.Sprintf("failed to convert reply to bytes: %v", err))
+				slog.Debug("failed to convert reply to bytes", "error", err)
 				// Send a basic JSON error response
 				errorReply := fmt.Sprintf(`{"error":"failed to serialize reply: %s","workflow_id":""}`, err.Error())
-				slog.Debug(fmt.Sprintf("sending error reply: %s", errorReply))
+				slog.Debug("sending error reply", "reply", errorReply)
 				msg.Respond([]byte(errorReply))
 				return
 			}
@@ -114,14 +113,14 @@ func (h *Handler) HandleRequest(msg *nats.Msg) {
 			// Store input arguments in KV store using workflow function name as key
 			kv, err := js.KeyValue(context.Background(), api.WorkflowInputBucket)
 			if err != nil {
-				slog.Debug(fmt.Sprintf("failed to get KV store: %v", err))
+				slog.Debug("failed to get KV store", "error", err)
 				h.sendErrorReply(msg, "", "internal server error: failed to get KV store: "+err.Error())
 				return
 			}
 
 			inputArgsData, err := h.conv.SerializeBinary(data.Input)
 			if err != nil {
-				slog.Debug(fmt.Sprintf("failed to serialize input args: %v", err))
+				slog.Debug("failed to serialize input args", "error", err)
 				h.sendErrorReply(msg, "", "internal server error: failed to serialize input args: "+err.Error())
 				return
 			}
@@ -129,11 +128,11 @@ func (h *Handler) HandleRequest(msg *nats.Msg) {
 			key := api.WorkflowInputKey(data.WorkflowFnName, api.WorkflowID(workflowID.String()))
 			_, err = kv.Put(context.Background(), key, inputArgsData)
 			if err != nil {
-				slog.Debug(fmt.Sprintf("failed to store input args in KV: %v", err))
+				slog.Debug("failed to store input args in KV", "error", err)
 				h.sendErrorReply(msg, "", "internal server error: failed to store input args: "+err.Error())
 				return
 			}
-			slog.Debug(fmt.Sprintf("stored input args in KV for workflow function: %s", data.WorkflowFnName))
+			slog.Debug("stored input args in KV", "workflow_fn", data.WorkflowFnName, "key", key)
 
 			subject := fmt.Sprintf(api.HistoryPublishSubjectPattern, idStr)
 			eventBytes, _ := h.conv.SerializeBinary(event)
@@ -147,20 +146,16 @@ func (h *Handler) HandleRequest(msg *nats.Msg) {
 			}
 			_, err = js.PublishMsg(context.Background(), startEventMsg)
 			if err != nil {
-				slog.Debug(fmt.Sprintf("error: %v", err))
+				slog.Debug("failed to publish event to history", "error", err)
 				h.sendErrorReply(msg, "", "internal server error: "+err.Error())
 				return
 			}
-			slog.Debug(fmt.Sprintf("published to history: %v", event))
+			slog.Debug("published event to history", "workflow_id", idStr, "event", event.EventName())
 
-			slog.Debug(fmt.Sprintf("FINAL REPLY CONTENT: %s", string(reply)))
-			slog.Debug(fmt.Sprintf("REPLY LENGTH: %d", len(reply)))
-
-			slog.Debug(fmt.Sprintf("publishing reply: %v", string(reply)))
-			slog.Debug(fmt.Sprintf("SENDING RESPONSE TO REPLY SUBJECT: %s", msg.Reply))
+			slog.Debug("sending response", "reply_subject", msg.Reply, "reply_size", len(reply))
 			err = msg.Respond(reply)
 			if err != nil {
-				slog.Debug(fmt.Sprintf("Failed to send response: %v", err))
+				slog.Debug("failed to send response", "error", err)
 				return
 			}
 

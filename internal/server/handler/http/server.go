@@ -35,14 +35,19 @@ type Server struct {
 }
 
 func NewServer(conn *jetstreamx.Connection, serde serde.BinarySerde, port string) *Server {
-	handler := NewDemoHandler(conn, serde)
+	demoHandler := NewDemoHandler(conn, serde)
+	healthHandler := NewHealthHandler(conn)
 
 	mux := http.NewServeMux()
 
+	// Health check endpoints
+	mux.HandleFunc("/health", healthHandler.Health)
+	mux.HandleFunc("/ready", healthHandler.Ready)
+
 	// Demo API endpoints
-	mux.HandleFunc("/api/demo/start", handler.StartWorkflow)
-	mux.HandleFunc("/api/demo/status", handler.GetStatus)
-	mux.HandleFunc("/api/demo/crash", handler.Crash)
+	mux.HandleFunc("/api/demo/start", demoHandler.StartWorkflow)
+	mux.HandleFunc("/api/demo/status", demoHandler.GetStatus)
+	mux.HandleFunc("/api/demo/crash", demoHandler.Crash)
 
 	// Serve frontend
 	frontendPath := os.Getenv("FRONTEND_BUILD_PATH")
@@ -63,7 +68,7 @@ func NewServer(conn *jetstreamx.Connection, serde serde.BinarySerde, port string
 	}
 
 	return &Server{
-		handler: handler,
+		handler: demoHandler,
 		server: &http.Server{
 			Addr:    ":" + port,
 			Handler: corsMiddleware(mux),

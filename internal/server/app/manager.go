@@ -38,7 +38,7 @@ type Manager struct {
 func NewManager(ctx context.Context, cfg jetstreamx.Config, serde serde.BinarySerde, httpPort string) (*Manager, error) {
 	conn, err := jetstreamx.Connect(cfg)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to connect to NATS: %w", err)
 	}
 
 	if !conn.IsConnected() {
@@ -53,49 +53,78 @@ func NewManager(ctx context.Context, cfg jetstreamx.Config, serde serde.BinarySe
 		httpPort:   httpPort,
 	}
 
-	m.ensureStreams(ctx)
-	m.ensureKV(ctx)
+	if err := m.ensureStreams(ctx); err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("failed to ensure NATS streams: %w", err)
+	}
+
+	if err := m.ensureKV(ctx); err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("failed to ensure NATS KV buckets: %w", err)
+	}
 
 	return m, nil
 }
 
-// TODO: Graceful HTTP shutdown
-// TODO Shutdown error logging
-// TODO:  Startup verification
-// TODO: Resource cleanup guarantees
 func (m *Manager) Run(ctx context.Context) error {
 	g, gCtx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
-		slog.Info("Starting HTTP Server...", "port", m.httpPort)
+		slog.Info("starting HTTP server", "port", m.httpPort)
 		return m.httpServer.Start(gCtx)
 	})
 
 	g.Go(func() error {
-		slog.Info("Starting Command Consumer...")
+		slog.Info("starting command processor")
 		return command.RunProcessor(gCtx, m.conn, m.handler)
 	})
 
 	g.Go(func() error {
-		slog.Info("Starting Workflow Task Projector...")
+		slog.Info("starting workflow task projector")
 		return projection.WorkflowTasks(gCtx, m.conn, m.serde)
 	})
 
 	g.Go(func() error {
-		slog.Info("Starting Activity Task Projector...")
+		slog.Info("starting activity task projector")
 		return projection.ActivityTasks(gCtx, m.conn, m.serde)
 	})
 
 	g.Go(func() error {
-		slog.Info("Starting Activity Retry Projector...")
+		slog.Info("starting activity retry projector")
 		return projection.ActivityRetries(gCtx, m.conn, m.serde)
 	})
 
 	g.Go(func() error {
-		slog.Info("Starting Workflow Result Projector...")
+		slog.Info("starting workflow result projector")
 		return projection.WorkflowResults(gCtx, m.conn, m.serde)
 	})
 
-	slog.Info("Manager is running.")
-	return g.Wait()
+	slog.Info("manager is running", "components", 6)
+
+	// Wait for all goroutines to complete or context cancellation
+	err := g.Wait()
+
+	// Perform graceful shutdown
+	slog.Info("initiating graceful shutdown")
+	m.Shutdown()
+
+	if err != nil && err != context.Canceled {
+		slog.Error("manager stopped with error", "error", err)
+		return err
+	}
+
+	slog.Info("manager shutdown complete")
+	return nil
+}
+
+// Shutdown performs graceful shutdown of all manager components
+func (m *Manager) Shutdown() {
+	slog.Info("shutting down manager components")
+
+	// Close NATS connection - this will drain and close all subscriptions
+	if m.conn != nil {
+		slog.Info("closing NATS connection")
+		m.conn.Close()
+		slog.Info("NATS connection closed")
+	}
 }
