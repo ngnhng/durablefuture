@@ -1,17 +1,3 @@
-// Copyright 2025 Nguyen Nhat Nguyen
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 package order
 
 import (
@@ -97,13 +83,13 @@ func OrderWorkflow(ctx workflow.Context, customerID string, productID string, am
 	// Configure retry policy for credit card charge activity
 	// This activity will be retried up to 3 times with exponential backoff
 	chargeActivityCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
-		ScheduleToCloseTimeout: 5 * time.Minute, // Total time budget across all retries
+		ScheduleToCloseTimeout: 5 * time.Minute,  // Total time budget across all retries
 		StartToCloseTimeout:    30 * time.Second, // Time per attempt
 		RetryPolicy: &workflow.RetryPolicy{
-			InitialInterval:    time.Second,     // Start with 1 second delay
-			BackoffCoefficient: 2.0,             // Double the delay each time
+			InitialInterval:    time.Second,      // Start with 1 second delay
+			BackoffCoefficient: 2.0,              // Double the delay each time
 			MaximumInterval:    30 * time.Second, // Cap backoff at 30 seconds
-			MaximumAttempts:    3,               // Try up to 3 times
+			MaximumAttempts:    3,                // Try up to 3 times
 			NonRetryableErrorTypes: []string{
 				"invalid card",       // Don't retry if card is invalid
 				"insufficient funds", // Don't retry if no funds

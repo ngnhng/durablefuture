@@ -1,17 +1,3 @@
-// Copyright 2025 Nguyen Nhat Nguyen
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 package internal
 
 import (
@@ -57,8 +43,10 @@ type ClientOptions struct {
 	Logger *slog.Logger
 }
 
-var _ Client = (*clientImpl)(nil)
-var _ client = (*clientImpl)(nil)
+var (
+	_ Client = (*clientImpl)(nil)
+	_ client = (*clientImpl)(nil)
+)
 
 type clientImpl struct {
 	converter serde.BinarySerde
@@ -95,7 +83,6 @@ func (c *clientImpl) startWorkflow(ctx context.Context, attrs *api.StartWorkflow
 // ExecuteWorkflow implements Client.
 // It starts a workflow execution by sending a command request to the manager and waits for the reply containing the workflow ID.
 func (c *clientImpl) ExecuteWorkflow(ctx context.Context, workflowFn any, input ...any) (Future, error) {
-
 	workflowName, err := common.ExtractFullFunctionName(workflowFn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to extract workflow function name: %w", err)

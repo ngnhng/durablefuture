@@ -1,17 +1,3 @@
-// Copyright 2025 Nguyen Nhat Nguyen
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 package api
 
 import (
@@ -28,14 +14,16 @@ type WorkflowEvent interface {
 	isWorkflowEvent()
 }
 
-var _ WorkflowEvent = (*WorkflowStarted)(nil)
-var _ WorkflowEvent = (*ActivityScheduled)(nil)
-var _ WorkflowEvent = (*ActivityStarted)(nil)
-var _ WorkflowEvent = (*ActivityCompleted)(nil)
-var _ WorkflowEvent = (*ActivityFailed)(nil)
-var _ WorkflowEvent = (*ActivityRetried)(nil)
-var _ WorkflowEvent = (*WorkflowFailed)(nil)
-var _ WorkflowEvent = (*WorkflowCompleted)(nil)
+var (
+	_ WorkflowEvent = (*WorkflowStarted)(nil)
+	_ WorkflowEvent = (*ActivityScheduled)(nil)
+	_ WorkflowEvent = (*ActivityStarted)(nil)
+	_ WorkflowEvent = (*ActivityCompleted)(nil)
+	_ WorkflowEvent = (*ActivityFailed)(nil)
+	_ WorkflowEvent = (*ActivityRetried)(nil)
+	_ WorkflowEvent = (*WorkflowFailed)(nil)
+	_ WorkflowEvent = (*WorkflowCompleted)(nil)
+)
 
 // TODO: workflow cancelled, workflow timed out, workflow terminated
 
